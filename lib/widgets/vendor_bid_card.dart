@@ -78,19 +78,16 @@ class _VendorBidCardState extends State<VendorBidCard> {
   @override
   Widget build(BuildContext context) {
     final vendor = widget.bid.vendor;
-    return _buildCard(
+    final cardContent = _buildCard(
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Portfolio Hero Strip
           _PortfolioStrip(imageUrls: vendor.portfolioImageUrls),
-
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Tier Badge + Rating Row
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -99,8 +96,6 @@ class _VendorBidCardState extends State<VendorBidCard> {
                   ],
                 ),
                 const SizedBox(height: 10),
-
-                // Vendor Name
                 Text(vendor.name, style: AppTextStyles.headingLarge),
                 const SizedBox(height: 4),
                 Text(vendor.tagline,
@@ -108,59 +103,36 @@ class _VendorBidCardState extends State<VendorBidCard> {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 10),
-
-                // Category + Location
                 Row(
                   children: [
-                    _InfoChip(
-                      icon: Icons.category_rounded,
-                      label: vendor.category.label,
-                    ),
+                    _InfoChip(icon: Icons.category_rounded, label: vendor.category.label),
                     const SizedBox(width: 8),
-                    _InfoChip(
-                      icon: Icons.location_on_rounded,
-                      label: vendor.location,
-                    ),
+                    _InfoChip(icon: Icons.location_on_rounded, label: vendor.location),
                   ],
                 ),
                 const SizedBox(height: 12),
-
-                // Package Description
                 Text('Package Includes', style: AppTextStyles.labelLarge),
                 const SizedBox(height: 6),
                 ...widget.bid.includedServices.take(3).map((service) => Padding(
                       padding: const EdgeInsets.only(bottom: 3),
-                      child: Row(
-                        children: [
-                          Icon(Icons.check_circle_rounded,
-                              size: 13, color: AppColors.success),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child:
-                                Text(service, style: AppTextStyles.bodySmall),
-                          ),
-                        ],
-                      ),
+                      child: Row(children: [
+                        Icon(Icons.check_circle_rounded, size: 13, color: AppColors.success),
+                        const SizedBox(width: 6),
+                        Expanded(child: Text(service, style: AppTextStyles.bodySmall)),
+                      ]),
                     )),
                 if (widget.bid.includedServices.length > 3)
-                  Text(
-                    '+${widget.bid.includedServices.length - 3} more services',
-                    style: AppTextStyles.bodySmall.copyWith(
-                      color: AppColors.crimson,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text('+${widget.bid.includedServices.length - 3} more services',
+                      style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.crimson, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 14),
-
-                // Price Reveal + CTA
                 Row(
                   children: [
                     Expanded(
                       child: _PriceRevealButton(
                         isRevealed: _priceRevealed,
                         price: widget.bid.quotedPrice,
-                        onReveal: () =>
-                            setState(() => _priceRevealed = true),
+                        onReveal: () => setState(() => _priceRevealed = true),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -172,7 +144,9 @@ class _VendorBidCardState extends State<VendorBidCard> {
           ),
         ],
       ),
-    )
+    );
+
+    return TiltCard(child: cardContent)
         .animate()
         .fadeIn(
           delay: Duration(milliseconds: widget.slotIndex * 120),

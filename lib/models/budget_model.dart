@@ -45,11 +45,13 @@ class BudgetPlan {
   final double totalBudget;
   final int guestCount;
   final List<BudgetCategory> categories;
+  final String? notes;
 
   BudgetPlan({
     required this.totalBudget,
     required this.guestCount,
     required this.categories,
+    this.notes,
   });
 
   double amountFor(BudgetCategory cat) =>
@@ -57,6 +59,11 @@ class BudgetPlan {
 
   double get perHeadCost =>
       guestCount > 0 ? totalBudget / guestCount : 0;
+
+  double get totalAllocated =>
+      categories.fold(0, (sum, c) => sum + c.allocatedPercent);
+
+  double get remainingPercent => 100.0 - totalAllocated;
 }
 
 List<BudgetCategory> defaultBudgetCategories() => [
@@ -64,7 +71,7 @@ List<BudgetCategory> defaultBudgetCategories() => [
         id: 'venue',
         name: 'Venue & Catering',
         banglaName: 'ভেন্যু ও ক্যাটারিং',
-        defaultPercent: 45,
+        defaultPercent: 40,
         color: AppColors.budgetVenue,
         icon: Icons.location_city_rounded,
       ),
@@ -72,7 +79,7 @@ List<BudgetCategory> defaultBudgetCategories() => [
         id: 'attire',
         name: 'Attire & Jewelry',
         banglaName: 'পোশাক ও গহনা',
-        defaultPercent: 20,
+        defaultPercent: 18,
         color: AppColors.budgetAttire,
         icon: Icons.diamond_rounded,
       ),
@@ -80,7 +87,7 @@ List<BudgetCategory> defaultBudgetCategories() => [
         id: 'decor',
         name: 'Decor & Lighting',
         banglaName: 'সাজসজ্জা ও আলো',
-        defaultPercent: 15,
+        defaultPercent: 12,
         color: AppColors.budgetDecor,
         icon: Icons.auto_awesome_rounded,
       ),
@@ -88,16 +95,48 @@ List<BudgetCategory> defaultBudgetCategories() => [
         id: 'photo',
         name: 'Photography & Video',
         banglaName: 'ফটোগ্রাফি ও ভিডিও',
-        defaultPercent: 12,
+        defaultPercent: 10,
         color: AppColors.budgetPhoto,
         icon: Icons.camera_alt_rounded,
       ),
       BudgetCategory(
         id: 'makeup',
-        name: 'Makeup & Logistics',
-        banglaName: 'মেকআপ ও লজিস্টিক্স',
-        defaultPercent: 8,
+        name: 'Makeup & Grooming',
+        banglaName: 'মেকআপ ও সাজ',
+        defaultPercent: 7,
         color: AppColors.budgetMakeup,
         icon: Icons.brush_rounded,
+      ),
+      BudgetCategory(
+        id: 'music',
+        name: 'Music & Entertainment',
+        banglaName: 'সংগীত ও বিনোদন',
+        defaultPercent: 5,
+        color: const Color(0xFFE91E8C),
+        icon: Icons.music_note_rounded,
+      ),
+      BudgetCategory(
+        id: 'transport',
+        name: 'Transport & Logistics',
+        banglaName: 'পরিবহন ও লজিস্টিক্স',
+        defaultPercent: 4,
+        color: const Color(0xFF00BCD4),
+        icon: Icons.directions_car_rounded,
+      ),
+      BudgetCategory(
+        id: 'invitation',
+        name: 'Invitations & Stationery',
+        banglaName: 'আমন্ত্রণপত্র',
+        defaultPercent: 2,
+        color: const Color(0xFF8BC34A),
+        icon: Icons.mail_rounded,
+      ),
+      BudgetCategory(
+        id: 'contingency',
+        name: 'Contingency / Misc',
+        banglaName: 'জরুরি খরচ',
+        defaultPercent: 2,
+        color: const Color(0xFF9E9E9E),
+        icon: Icons.savings_rounded,
       ),
     ];

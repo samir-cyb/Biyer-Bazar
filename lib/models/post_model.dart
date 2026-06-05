@@ -3,27 +3,18 @@ enum PostStatus { open, reviewing, booked, cancelled }
 extension PostStatusLabel on PostStatus {
   String get label {
     switch (this) {
-      case PostStatus.open:
-        return 'Open';
-      case PostStatus.reviewing:
-        return 'Reviewing Bids';
-      case PostStatus.booked:
-        return 'Booked';
-      case PostStatus.cancelled:
-        return 'Cancelled';
+      case PostStatus.open:       return 'Open';
+      case PostStatus.reviewing:  return 'Reviewing Bids';
+      case PostStatus.booked:     return 'Booked';
+      case PostStatus.cancelled:  return 'Cancelled';
     }
   }
-
   String get emoji {
     switch (this) {
-      case PostStatus.open:
-        return '🟢';
-      case PostStatus.reviewing:
-        return '🔵';
-      case PostStatus.booked:
-        return '✅';
-      case PostStatus.cancelled:
-        return '❌';
+      case PostStatus.open:       return '🟢';
+      case PostStatus.reviewing:  return '🔵';
+      case PostStatus.booked:     return '✅';
+      case PostStatus.cancelled:  return '❌';
     }
   }
 }
@@ -42,6 +33,7 @@ class EventPost {
   final PostStatus status;
   final DateTime createdAt;
   final String? selectedBidId;
+  final String? budgetPlanId;
 
   EventPost({
     required this.id,
@@ -57,56 +49,42 @@ class EventPost {
     this.status = PostStatus.open,
     required this.createdAt,
     this.selectedBidId,
+    this.budgetPlanId,
   });
 
-  Map<String, dynamic> toMap() => {
-        'id': id,
-        'hostId': hostId,
-        'hostName': hostName,
-        'hostPhone': hostPhone,
-        'location': location,
-        'eventDate': eventDate.toIso8601String(),
-        'guestCapacity': guestCapacity,
-        'serviceCategory': serviceCategory,
-        'budgetCeiling': budgetCeiling,
-        'description': description,
-        'status': status.index,
-        'createdAt': createdAt.toIso8601String(),
-        'selectedBidId': selectedBidId,
-      };
-
-  factory EventPost.fromMap(Map<dynamic, dynamic> map) => EventPost(
-        id: map['id'] as String,
-        hostId: map['hostId'] as String,
-        hostName: map['hostName'] as String,
-        hostPhone: map['hostPhone'] as String,
-        location: map['location'] as String,
-        eventDate: DateTime.parse(map['eventDate'] as String),
-        guestCapacity: map['guestCapacity'] as int,
-        serviceCategory: map['serviceCategory'] as String,
-        budgetCeiling: map['budgetCeiling'] as int,
-        description: map['description'] as String,
-        status: PostStatus.values[map['status'] as int],
-        createdAt: DateTime.parse(map['createdAt'] as String),
-        selectedBidId: map['selectedBidId'] as String?,
-      );
+  factory EventPost.fromMap(Map<dynamic, dynamic> m) => EventPost(
+    id:              m['id'] as String,
+    hostId:          m['host_id'] as String,
+    hostName:        m['host_name'] as String? ?? '',
+    hostPhone:       m['host_phone'] as String? ?? '',
+    location:        m['location'] as String? ?? '',
+    eventDate:       DateTime.tryParse(m['event_date'] as String? ?? '') ?? DateTime.now(),
+    guestCapacity:   (m['guest_capacity'] as int?) ?? 0,
+    serviceCategory: m['service_category'] as String? ?? '',
+    budgetCeiling:   (m['budget_ceiling'] as int?) ?? 0,
+    description:     m['description'] as String? ?? '',
+    status:          _parseStatus(m['status'] as String?),
+    createdAt:       DateTime.tryParse(m['created_at'] as String? ?? '') ?? DateTime.now(),
+    selectedBidId:   m['selected_bid_id'] as String?,
+    budgetPlanId:    m['budget_plan_id'] as String?,
+  );
 
   EventPost copyWith({PostStatus? status, String? selectedBidId}) => EventPost(
-        id: id,
-        hostId: hostId,
-        hostName: hostName,
-        hostPhone: hostPhone,
-        location: location,
-        eventDate: eventDate,
-        guestCapacity: guestCapacity,
-        serviceCategory: serviceCategory,
-        budgetCeiling: budgetCeiling,
-        description: description,
-        status: status ?? this.status,
-        createdAt: createdAt,
-        selectedBidId: selectedBidId ?? this.selectedBidId,
-      );
+    id: id, hostId: hostId, hostName: hostName, hostPhone: hostPhone,
+    location: location, eventDate: eventDate, guestCapacity: guestCapacity,
+    serviceCategory: serviceCategory, budgetCeiling: budgetCeiling,
+    description: description, status: status ?? this.status, createdAt: createdAt,
+    selectedBidId: selectedBidId ?? this.selectedBidId, budgetPlanId: budgetPlanId,
+  );
 
-  int get daysUntilEvent =>
-      eventDate.difference(DateTime.now()).inDays;
+  int get daysUntilEvent => eventDate.difference(DateTime.now()).inDays;
+
+  static PostStatus _parseStatus(String? s) {
+    switch (s) {
+      case 'reviewing':  return PostStatus.reviewing;
+      case 'booked':     return PostStatus.booked;
+      case 'cancelled':  return PostStatus.cancelled;
+      default:           return PostStatus.open;
+    }
+  }
 }

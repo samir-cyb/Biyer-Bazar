@@ -9,6 +9,7 @@ import '../../models/event_request_model.dart';
 import '../../models/vendor_model.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/vendor_bid_card.dart';
+import '../../widgets/mesh_background.dart';
 
 class BidFeedScreen extends StatefulWidget {
   final EventRequest? eventRequest;
@@ -54,7 +55,7 @@ class _BidFeedScreenState extends State<BidFeedScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: NestedScrollView(
+      body: StaticMeshBackground(child: NestedScrollView(
         headerSliverBuilder: (context, innerBoxIsScrolled) => [
           _buildSliverHeader(innerBoxIsScrolled),
         ],
@@ -79,7 +80,7 @@ class _BidFeedScreenState extends State<BidFeedScreen>
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 

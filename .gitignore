@@ -43,3 +43,37 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ── Secrets & API keys (NEVER commit) ────────────────────────────────────────
+.env
+.env.*
+*.env
+lib/core/secrets.dart
+lib/config/secrets.dart
+secrets.dart
+google-services.json
+GoogleService-Info.plist
+
+# ── Android signing keys ──────────────────────────────────────────────────────
+android/key.properties
+android/app/*.jks
+android/app/*.keystore
+*.jks
+*.keystore
+
+# ── iOS ───────────────────────────────────────────────────────────────────────
+ios/Pods/
+ios/Podfile.lock
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+
+# ── pubspec.lock (optional: commit if you want reproducible builds) ───────────
+pubspec.lock
+
+# ── VS Code ───────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.vscode/launch.json
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+Thumbs.db
+*.swp

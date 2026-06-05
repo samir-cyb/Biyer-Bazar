@@ -1,5 +1,5 @@
-name: biyer_bazar
-description: "BiyerBajar - Reverse-bidding wedding marketplace for Bangladesh"
+name: utsob
+description: "Utsob - Reverse-bidding celebration marketplace for Bangladesh"
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -11,12 +11,32 @@ dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+
+  # UI & Animation
   google_fonts: ^6.2.1
   flutter_animate: ^4.5.0
-  intl: ^0.19.0
+
+  # Database - Supabase (primary cloud DB)
+  supabase_flutter: ^2.8.4
+
+  # Local cache / session
   hive: ^2.2.3
   hive_flutter: ^1.1.0
+
+  # Utilities
+  intl: ^0.19.0
   uuid: ^4.4.0
+
+  # Image handling
+  image_picker: ^1.1.2
+  cached_network_image: ^3.4.1
+
+  # Misc
+  flutter_rating_bar: ^4.0.1
+  percent_indicator: ^4.2.3
+
+  #icons_launcher:
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -27,3 +47,30 @@ flutter:
   uses-material-design: true
   assets:
     - assets/images/
+
+# ─────────────────────────────────────────
+# Flutter Launcher Icons Configuration
+# ─────────────────────────────────────────
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+
+  web:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+    background_color: "#1a1a2e"
+    theme_color: "#d4af37"
+
+  macos:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+
+  windows:
+    generate: true
+    image_path: "assets/images/app_icon.png"
+    icon_size: 48
+
+  linux:
+    generate: true
+    image_path: "assets/images/app_icon.png"

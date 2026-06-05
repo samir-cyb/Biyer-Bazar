@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/app_colors.dart';
@@ -5,8 +6,8 @@ import '../../core/app_text_styles.dart';
 import '../../models/post_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/post_service.dart';
-import '../../services/hive_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/mesh_background.dart';
 import '../request/request_creation_screen.dart';
 import 'post_detail_screen.dart';
 
@@ -21,26 +22,36 @@ class _MyPostsScreenState extends State<MyPostsScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
   List<EventPost> _allPosts = [];
+  Timer? _autoRefreshTimer;
 
   @override
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 4, vsync: this);
     _refresh();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refresh());
   }
 
   @override
   void dispose() {
     _tabCtrl.dispose();
+    _autoRefreshTimer?.cancel();
     super.dispose();
   }
 
-  void _refresh() {
+  Future<void> _refresh() async {
     final user = AuthService.currentUser;
     if (user == null) return;
-    setState(() {
-      _allPosts = PostService.getMyPosts(user.id);
-    });
+    final posts = await PostService.getMyPosts(user.id);
+    if (mounted) setState(() => _allPosts = posts);
+  }
+
+  void _goCreatePost() async {
+    await Navigator.push(context, PageRouteBuilder(
+      pageBuilder: (_, __, ___) => const RequestCreationScreen(),
+      transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+    ));
+    _refresh();
   }
 
   List<EventPost> _filter(PostStatus? status) =>
@@ -49,12 +60,17 @@ class _MyPostsScreenState extends State<MyPostsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text('My Posts', style: AppTextStyles.headingLarge),
         backgroundColor: AppColors.background,
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_circle_rounded, color: AppColors.crimson, size: 26),
+            tooltip: 'New Post',
+            onPressed: _goCreatePost,
+          ),
           IconButton(
             icon: const Icon(Icons.refresh_rounded, color: AppColors.charcoal),
             onPressed: _refresh,
@@ -75,7 +91,7 @@ class _MyPostsScreenState extends State<MyPostsScreen>
           ],
         ),
       ),
-      body: TabBarView(
+      body: StaticMeshBackground(child: TabBarView(
         controller: _tabCtrl,
         children: [
           _PostList(posts: _filter(null), onRefresh: _refresh),
@@ -83,19 +99,9 @@ class _MyPostsScreenState extends State<MyPostsScreen>
           _PostList(posts: _filter(PostStatus.booked), onRefresh: _refresh),
           _PostList(posts: _filter(PostStatus.cancelled), onRefresh: _refresh),
         ],
-      ),
+      )),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            PageRouteBuilder(
-              pageBuilder: (_, __, ___) => const RequestCreationScreen(),
-              transitionsBuilder: (_, a, __, c) =>
-                  FadeTransition(opacity: a, child: c),
-            ),
-          );
-          _refresh();
-        },
+        onPressed: _goCreatePost,
         backgroundColor: AppColors.crimson,
         foregroundColor: Colors.white,
         icon: const Icon(Icons.add_rounded),
@@ -134,7 +140,7 @@ class _PostList extends StatelessWidget {
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
         itemCount: posts.length,
-        itemBuilder: (ctx, i) => _PostDetailCard(
+        itemBuilder: (ctx, i) => TiltCard(child: _PostDetailCard(
           post: posts[i],
           index: i,
           onTap: () async {
@@ -149,7 +155,7 @@ class _PostList extends StatelessWidget {
             );
             onRefresh();
           },
-        ),
+        )),
       ),
     );
   }
@@ -164,7 +170,7 @@ class _PostDetailCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bidCount = HiveService.getBidsForPost(post.id).length;
+    const bidCount = 0; // loaded live in PostDetailScreen
     final daysLeft = post.daysUntilEvent;
 
     return GlassCard(

@@ -5,8 +5,8 @@ import '../../core/app_text_styles.dart';
 import '../../models/bid_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/bid_service.dart';
-import '../../services/hive_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/mesh_background.dart';
 import 'package:intl/intl.dart';
 
 class MyBidsScreen extends StatefulWidget {
@@ -26,31 +26,29 @@ class _MyBidsScreenState extends State<MyBidsScreen> {
     _refresh();
   }
 
-  void _refresh() {
+  Future<void> _refresh() async {
     final user = AuthService.currentUser;
     if (user == null) return;
-    setState(() {
-      _bids = BidService.getMyBids(user.id);
-    });
+    final bids = await BidService.getMyBids(user.id);
+    if (mounted) setState(() => _bids = bids);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         elevation: 0,
         title: Text('My Bids', style: AppTextStyles.headingLarge),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded,
-                color: AppColors.charcoal),
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.charcoal),
             onPressed: _refresh,
           ),
         ],
       ),
-      body: _bids.isEmpty
+      body: StaticMeshBackground(child: _bids.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -73,10 +71,10 @@ class _MyBidsScreenState extends State<MyBidsScreen> {
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                 itemCount: _bids.length,
-                itemBuilder: (_, i) =>
-                    _BidCard(bid: _bids[i], index: i, fmt: _fmt),
+                itemBuilder: (_, i) => TiltCard(
+                    child: _BidCard(bid: _bids[i], index: i, fmt: _fmt)),
               ),
-            ),
+            )),
     );
   }
 }
@@ -101,7 +99,8 @@ class _BidCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final post = HiveService.getPost(bid.postId);
+    // Post details not available locally — shown from bid data
+    const post = null;
 
     return GlassCard(
       margin: const EdgeInsets.only(bottom: 14),

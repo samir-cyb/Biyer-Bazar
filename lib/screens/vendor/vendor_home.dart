@@ -1,12 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/app_colors.dart';
 import '../../core/app_text_styles.dart';
+import '../../core/service_categories.dart';
+import '../../widgets/notification_bell.dart';
+import '../../models/bid_model.dart';
 import '../../models/post_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/post_service.dart';
 import '../../services/bid_service.dart';
+import '../../services/booking_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/mesh_background.dart';
 import 'submit_bid_screen.dart';
 
 class VendorHome extends StatefulWidget {
@@ -20,40 +26,58 @@ class VendorHome extends StatefulWidget {
 class _VendorHomeState extends State<VendorHome> {
   List<EventPost> _openPosts = [];
   String _filterCategory = 'All';
+  int _myBidsCount = 0;
+  int _myBookingsCount = 0;
+  Timer? _autoRefreshTimer;
 
-  final _categories = [
-    'All', 'Photography & Video', 'Catering', 'Decor & Lighting',
-    'Makeup Artist', 'Venue', 'Attire & Jewelry', 'Logistics',
-  ];
+  final _categories = ['All', ...ServiceCategories.all];
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _refresh(),
+    );
   }
 
-  void _refresh() {
+  @override
+  void dispose() {
+    _autoRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refresh() async {
     final user = AuthService.currentUser;
     if (user == null) return;
-    final all = PostService.getOpenPosts();
-    setState(() {
-      _openPosts = _filterCategory == 'All'
-          ? all
-          : all
-              .where((p) => p.serviceCategory == _filterCategory)
-              .toList();
-    });
+    final results = await Future.wait([
+      PostService.getOpenPosts(),
+      BidService.getMyBids(user.id),
+      BookingService.getVendorBookings(user.id),
+    ]);
+    final all      = results[0] as List<EventPost>;
+    final myBids   = results[1] as List<Bid>;
+    final bookings = results[2] as List;
+    if (mounted) {
+      setState(() {
+        _myBidsCount     = myBids.length;
+        _myBookingsCount = bookings.length;
+        _openPosts = _filterCategory == 'All'
+            ? all
+            : all.where((p) => p.serviceCategory == _filterCategory).toList();
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final user = AuthService.currentUser;
-    final myBidsCount =
-        BidService.getMyBids(user?.id ?? '').length;
+    final myBidsCount = _myBidsCount;
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: RefreshIndicator(
+      body: StaticMeshBackground(child: RefreshIndicator(
         onRefresh: () async => _refresh(),
         color: AppColors.crimson,
         child: CustomScrollView(
@@ -68,6 +92,7 @@ class _VendorHomeState extends State<VendorHome> {
                     category: user?.vendorCategory ?? 'Service Provider',
                     myBidsCount: myBidsCount,
                     openPosts: _openPosts.length,
+                    myBookingsCount: _myBookingsCount,
                   ),
                   const SizedBox(height: 20),
                   _CategoryFilter(
@@ -97,15 +122,15 @@ class _VendorHomeState extends State<VendorHome> {
                   if (_openPosts.isEmpty)
                     _EmptyState()
                   else
-                    ..._openPosts.asMap().entries.map((e) => _OpenPostCard(
+                    ..._openPosts.asMap().entries.map((e) => TiltCard(child: _OpenPostCard(
                           post: e.value,
                           index: e.key,
                           onBid: () async {
                             final vendorUser = AuthService.currentUser;
                             if (vendorUser == null) return;
-                            final alreadyBid = !BidService.canVendorBid(
+                            final canBid = await BidService.canVendorBid(
                                 vendorUser.id, e.value.id);
-                            if (alreadyBid) {
+                            if (!canBid) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: const Text(
@@ -130,13 +155,13 @@ class _VendorHomeState extends State<VendorHome> {
                             );
                             _refresh();
                           },
-                        )),
+                        ))),
                 ]),
               ),
             ),
           ],
         ),
-      ),
+      )),
     );
   }
 
@@ -180,10 +205,10 @@ class _VendorHomeState extends State<VendorHome> {
         ],
       ),
       actions: [
+        const NotificationBell(),
         Container(
-          margin: const EdgeInsets.only(right: 16),
-          padding:
-              const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          margin: const EdgeInsets.only(right: 16, left: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: AppColors.gold.withOpacity(0.1),
             borderRadius: BorderRadius.circular(20),
@@ -209,11 +234,13 @@ class _VendorBanner extends StatelessWidget {
   final String category;
   final int myBidsCount;
   final int openPosts;
+  final int myBookingsCount;
   const _VendorBanner(
       {required this.businessName,
       required this.category,
       required this.myBidsCount,
-      required this.openPosts});
+      required this.openPosts,
+      required this.myBookingsCount});
 
   @override
   Widget build(BuildContext context) {
@@ -251,6 +278,12 @@ class _VendorBanner extends StatelessWidget {
                 value: '$myBidsCount',
                 label: 'My Bids',
                 color: AppColors.gold,
+              ),
+              const SizedBox(width: 10),
+              _Chip(
+                value: '$myBookingsCount',
+                label: 'Bookings',
+                color: AppColors.freshTalent,
               ),
             ],
           ),

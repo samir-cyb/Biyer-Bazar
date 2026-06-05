@@ -9,37 +9,30 @@ class AppTheme {
       useMaterial3: true,
       scaffoldBackgroundColor: AppColors.background,
       colorScheme: const ColorScheme.light(
-        primary: AppColors.crimson,
+        primary:   AppColors.crimson,
         secondary: AppColors.gold,
-        surface: AppColors.surface,
-        onPrimary: Colors.white,
+        surface:   AppColors.surface,
+        onPrimary:   Colors.white,
         onSecondary: AppColors.charcoal,
-        onSurface: AppColors.charcoal,
-        error: AppColors.error,
+        onSurface:   AppColors.charcoal,
+        error:       AppColors.error,
       ),
+      extensions: const [AppGlassTokens.light],
       textTheme: GoogleFonts.latoTextTheme().copyWith(
         displayLarge: GoogleFonts.playfairDisplay(
-          fontSize: 36,
-          fontWeight: FontWeight.w700,
-          color: AppColors.charcoal,
+          fontSize: 36, fontWeight: FontWeight.w700, color: AppColors.charcoal,
         ),
         displayMedium: GoogleFonts.playfairDisplay(
-          fontSize: 28,
-          fontWeight: FontWeight.w600,
-          color: AppColors.charcoal,
+          fontSize: 28, fontWeight: FontWeight.w600, color: AppColors.charcoal,
         ),
         headlineLarge: GoogleFonts.lato(
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-          color: AppColors.charcoal,
+          fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.charcoal,
         ),
         bodyLarge: GoogleFonts.lato(
-          fontSize: 16,
-          color: AppColors.charcoalMid,
+          fontSize: 16, color: AppColors.charcoalMid,
         ),
         bodyMedium: GoogleFonts.lato(
-          fontSize: 14,
-          color: AppColors.charcoalMid,
+          fontSize: 14, color: AppColors.charcoalMid,
         ),
       ),
       appBarTheme: AppBarTheme(
@@ -49,9 +42,7 @@ class AppTheme {
         centerTitle: false,
         iconTheme: const IconThemeData(color: AppColors.charcoal),
         titleTextStyle: GoogleFonts.playfairDisplay(
-          fontSize: 22,
-          fontWeight: FontWeight.w700,
-          color: AppColors.charcoal,
+          fontSize: 22, fontWeight: FontWeight.w700, color: AppColors.charcoal,
         ),
         systemOverlayStyle: const SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
@@ -63,15 +54,16 @@ class AppTheme {
           backgroundColor: AppColors.crimson,
           foregroundColor: Colors.white,
           elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: GoogleFonts.lato(
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.3,
-          ),
+          textStyle: GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.3),
+        ).copyWith(
+          // Subtle press shadow for tactile feel
+          overlayColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.pressed)) return Colors.white.withOpacity(0.1);
+            return null;
+          }),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
@@ -89,16 +81,17 @@ class AppTheme {
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(color: AppColors.crimson, width: 1.5),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-        labelStyle: GoogleFonts.lato(
-          fontSize: 14,
-          color: AppColors.charcoalLight,
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
         ),
-        hintStyle: GoogleFonts.lato(
-          fontSize: 14,
-          color: AppColors.charcoalLight,
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: const BorderSide(color: AppColors.error, width: 2),
         ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        labelStyle: GoogleFonts.lato(fontSize: 14, color: AppColors.charcoalLight),
+        hintStyle: GoogleFonts.lato(fontSize: 14, color: AppColors.charcoalLight),
       ),
       sliderTheme: SliderThemeData(
         activeTrackColor: AppColors.crimson,
@@ -126,6 +119,17 @@ class AppTheme {
         showSelectedLabels: true,
         showUnselectedLabels: true,
         type: BottomNavigationBarType.fixed,
+      ),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: AppColors.background,
+        elevation: 16,
+        shadowColor: Colors.black.withOpacity(0.15),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        contentTextStyle: GoogleFonts.lato(fontSize: 14, color: Colors.white),
       ),
     );
   }

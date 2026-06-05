@@ -7,7 +7,9 @@ import '../../models/post_model.dart';
 import '../../services/bid_service.dart';
 import '../../services/post_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/mesh_background.dart';
 import 'package:intl/intl.dart';
+import 'rate_vendor_screen.dart';
 
 class PostDetailScreen extends StatefulWidget {
   final EventPost post;
@@ -18,7 +20,7 @@ class PostDetailScreen extends StatefulWidget {
 }
 
 class _PostDetailScreenState extends State<PostDetailScreen> {
-  late List<Bid> _curatedBids;
+  List<Bid> _curatedBids = [];
   final _fmt = NumberFormat('#,##,###', 'en_IN');
 
   @override
@@ -27,13 +29,12 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
     _loadBids();
   }
 
-  void _loadBids() {
-    setState(() {
-      _curatedBids = BidService.getCuratedBidsForHost(
-        widget.post.id,
-        widget.post.location,
-      );
-    });
+  Future<void> _loadBids() async {
+    final bids = await BidService.getCuratedBidsForHost(
+      widget.post.id,
+      widget.post.location,
+    );
+    if (mounted) setState(() => _curatedBids = bids);
   }
 
   String _slotLabel(int index) {
@@ -90,7 +91,7 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
+      body: StaticMeshBackground(child: CustomScrollView(
         slivers: [
           _buildHeader(),
           SliverPadding(
@@ -99,6 +100,15 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
               delegate: SliverChildListDelegate([
                 _PostInfoCard(post: widget.post, fmt: _fmt),
                 const SizedBox(height: 20),
+                // ── Rate Vendor Banner (booked posts) ──────────────────────
+                if (widget.post.status == PostStatus.booked &&
+                    widget.post.selectedBidId != null) ...[
+                  _RateVendorBanner(
+                    post: widget.post,
+                    bids: _curatedBids,
+                  ),
+                  const SizedBox(height: 16),
+                ],
                 if (_curatedBids.isEmpty)
                   _EmptyBidsCard()
                 else ...[
@@ -111,21 +121,23 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  ..._curatedBids.asMap().entries.map((e) => _BidCard(
-                        bid: e.value,
-                        index: e.key,
-                        slotLabel: _slotLabel(e.key),
-                        slotColor: _slotColor(e.key),
-                        fmt: _fmt,
-                        canAccept: widget.post.status == PostStatus.open,
-                        onAccept: () => _acceptBid(e.value),
+                  ..._curatedBids.asMap().entries.map((e) => TiltCard(
+                        child: _BidCard(
+                          bid: e.value,
+                          index: e.key,
+                          slotLabel: _slotLabel(e.key),
+                          slotColor: _slotColor(e.key),
+                          fmt: _fmt,
+                          canAccept: widget.post.status == PostStatus.open,
+                          onAccept: () => _acceptBid(e.value),
+                        ),
                       )),
                 ],
               ]),
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 
@@ -509,6 +521,49 @@ class _GlowWrapperState extends State<_GlowWrapper>
           .fadeIn(duration: 350.ms)
           .slideY(begin: 0.1, end: 0),
     );
+  }
+}
+
+// ── Rate Vendor Banner ────────────────────────────────────────────────────────
+class _RateVendorBanner extends StatelessWidget {
+  final EventPost post;
+  final List<Bid> bids;
+  const _RateVendorBanner({required this.post, required this.bids});
+
+  @override
+  Widget build(BuildContext context) {
+    final acceptedBid = bids.where((b) => b.id == post.selectedBidId).isNotEmpty
+        ? bids.firstWhere((b) => b.id == post.selectedBidId)
+        : (bids.isNotEmpty ? bids.first : null);
+
+    return GlassCard(
+      backgroundColor: AppColors.gold.withOpacity(0.07),
+      borderColor: AppColors.gold.withOpacity(0.25),
+      child: Row(children: [
+        const Text('⭐', style: TextStyle(fontSize: 28)),
+        const SizedBox(width: 14),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Event Completed?', style: AppTextStyles.headingMedium),
+          Text('Rate your vendor and help them earn a badge.',
+              style: AppTextStyles.bodySmall),
+        ])),
+        ElevatedButton(
+          onPressed: acceptedBid == null ? null : () {
+            Navigator.push(context, PageRouteBuilder(
+              pageBuilder: (_, __, ___) => RateVendorScreen(
+                post: post, acceptedBid: acceptedBid),
+              transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+            ));
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.gold,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          ),
+          child: const Text('Rate Now'),
+        ),
+      ]),
+    ).animate().fadeIn(duration: 350.ms).slideY(begin: 0.05, end: 0);
   }
 }
 

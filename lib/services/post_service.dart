@@ -1,13 +1,10 @@
-import 'package:uuid/uuid.dart';
-import '../models/bid_model.dart';
+import 'dart:developer' as dev;
 import '../models/post_model.dart';
 import '../models/user_model.dart';
-import 'hive_service.dart';
+import 'supabase_service.dart';
 
 class PostService {
-  static const _uuid = Uuid();
-
-  static EventPost createPost({
+  static Future<EventPost?> createPost({
     required AppUser host,
     required String location,
     required DateTime eventDate,
@@ -15,61 +12,107 @@ class PostService {
     required String serviceCategory,
     required int budgetCeiling,
     required String description,
-  }) {
-    final post = EventPost(
-      id: _uuid.v4(),
-      hostId: host.id,
-      hostName: host.name,
-      hostPhone: host.phone,
-      location: location,
-      eventDate: eventDate,
-      guestCapacity: guestCapacity,
-      serviceCategory: serviceCategory,
-      budgetCeiling: budgetCeiling,
-      description: description,
-      createdAt: DateTime.now(),
-    );
-    HiveService.savePost(post);
-    return post;
-  }
-
-  static List<EventPost> getMyPosts(String hostId) =>
-      HiveService.getPostsByHost(hostId);
-
-  static List<EventPost> getOpenPosts() => HiveService.getOpenPosts();
-
-  static List<EventPost> getOpenPostsForVendorCategory(String category) =>
-      HiveService.getOpenPosts()
-          .where((p) =>
-              p.serviceCategory.toLowerCase() == category.toLowerCase())
-          .toList();
-
-  static void acceptBid(String postId, String bidId) {
-    final post = HiveService.getPost(postId);
-    if (post == null) return;
-    // Mark the selected bid accepted
-    HiveService.updateBidStatus(bidId, BidStatus.accepted);
-    // Reject all other bids for this post
-    final otherBids = HiveService.getBidsForPost(postId)
-        .where((b) => b.id != bidId)
-        .toList();
-    for (final bid in otherBids) {
-      HiveService.updateBidStatus(bid.id, BidStatus.rejected);
+    String? budgetPlanId,
+  }) async {
+    dev.log('[PostService] Creating post: $serviceCategory for ${host.name}', name: 'BiyerBajar');
+    try {
+      final data = await SupabaseService.eventPosts.insert({
+        'host_id': host.id,
+        'host_name': host.name,
+        'host_phone': host.phone,
+        'location': location,
+        'event_date': eventDate.toIso8601String().substring(0, 10),
+        'guest_capacity': guestCapacity,
+        'service_category': serviceCategory,
+        'budget_ceiling': budgetCeiling,
+        'description': description,
+        'budget_plan_id': budgetPlanId,
+        'status': 'open',
+      }).select().single();
+      return EventPost.fromMap(data);
+    } catch (e) {
+      SupabaseService.debugLog('createPost error', error: e);
+      return null;
     }
-    // Update post status
-    final updated = post.copyWith(
-      status: PostStatus.booked,
-      selectedBidId: bidId,
-    );
-    HiveService.savePost(updated);
   }
 
-  static void cancelPost(String postId) {
-    final post = HiveService.getPost(postId);
-    if (post == null) return;
-    HiveService.savePost(post.copyWith(status: PostStatus.cancelled));
+  static Future<List<EventPost>> getMyPosts(String hostId) async {
+    try {
+      final data = await SupabaseService.eventPosts
+          .select()
+          .eq('host_id', hostId)
+          .order('created_at', ascending: false);
+      return (data as List).map((d) => EventPost.fromMap(d)).toList();
+    } catch (e) {
+      SupabaseService.debugLog('getMyPosts error', error: e);
+      return [];
+    }
   }
 
-  static int getBidCount(String postId) =>
-      HiveService.getBidsForPost(postId).length;
+  static Future<List<EventPost>> getOpenPosts({String? categoryFilter, String? locationFilter}) async {
+    try {
+      var query = SupabaseService.eventPosts.select().eq('status', 'open');
+      if (categoryFilter != null && categoryFilter != 'All') {
+        query = query.eq('service_category', categoryFilter);
+      }
+      if (locationFilter != null && locationFilter != 'All') {
+        query = query.eq('location', locationFilter);
+      }
+      final data = await query.order('created_at', ascending: false);
+      return (data as List).map((d) => EventPost.fromMap(d)).toList();
+    } catch (e) {
+      SupabaseService.debugLog('getOpenPosts error', error: e);
+      return [];
+    }
+  }
+
+  static Future<void> acceptBid(String postId, String bidId) async {
+    dev.log('[PostService] Accept bid $bidId on post $postId', name: 'BiyerBajar');
+    try {
+      await SupabaseService.bids.update({'status': 'accepted'}).eq('id', bidId);
+      // Reject all other bids
+      await SupabaseService.bids
+          .update({'status': 'rejected'})
+          .eq('post_id', postId)
+          .neq('id', bidId);
+      // Update post status
+      await SupabaseService.eventPosts
+          .update({'status': 'booked', 'selected_bid_id': bidId}).eq('id', postId);
+    } catch (e) {
+      SupabaseService.debugLog('acceptBid error', error: e);
+    }
+  }
+
+  static Future<void> cancelPost(String postId) async {
+    try {
+      await SupabaseService.eventPosts.update({'status': 'cancelled'}).eq('id', postId);
+    } catch (e) {
+      SupabaseService.debugLog('cancelPost error', error: e);
+    }
+  }
+
+  static Future<int> getBidCount(String postId) async {
+    try {
+      final res = await SupabaseService.bids
+          .select('id')
+          .eq('post_id', postId);
+      return (res as List).length;
+    } catch (e) {
+      SupabaseService.debugLog('getBidCount error', error: e);
+      return 0;
+    }
+  }
+
+  // Admin: get all posts
+  static Future<List<EventPost>> getAllPosts() async {
+    try {
+      final data = await SupabaseService.eventPosts
+          .select()
+          .order('created_at', ascending: false);
+      return (data as List).map((d) => EventPost.fromMap(d)).toList();
+    } catch (e) {
+      SupabaseService.debugLog('getAllPosts error', error: e);
+      return [];
+    }
+  }
 }

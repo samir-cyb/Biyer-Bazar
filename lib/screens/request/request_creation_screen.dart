@@ -4,9 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/app_colors.dart';
 import '../../core/app_text_styles.dart';
+import '../../core/service_categories.dart';
+import '../../services/budget_service.dart';
 import '../../services/auth_service.dart';
 import '../../services/post_service.dart';
 import '../../widgets/glass_card.dart';
+import '../../widgets/mesh_background.dart';
 
 class RequestCreationScreen extends StatefulWidget {
   const RequestCreationScreen({super.key});
@@ -24,17 +27,167 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
   DateTime? _eventDate;
   final _guestController = TextEditingController();
   final _budgetController = TextEditingController();
-  String _selectedCategory = 'Photography & Video';
+  String _selectedCategory = ServiceCategories.all.first;
   final _descController = TextEditingController();
+  SavedBudgetPlan? _suggestedBudget;
+  bool _loadingSuggestedBudget = false;
 
   final List<String> _locations = [
-    'Dhaka', 'Chittagong', 'Sylhet', 'Rajshahi', 'Khulna'
+    'Dhaka', 'Chittagong', 'Sylhet', 'Rajshahi', 'Khulna',
+    'Barishal', 'Cumilla', 'Mymensingh', 'Rangpur', 'Narayanganj',
   ];
 
-  final List<String> _categories = [
-    'Photography & Video', 'Catering', 'Decor & Lighting',
-    'Makeup Artist', 'Venue', 'Attire & Jewelry', 'Logistics',
-  ];
+  final List<String> _categories = ServiceCategories.all;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuggestedBudget();
+  }
+
+  Future<void> _loadSuggestedBudget() async {
+    final user = AuthService.currentUser;
+    if (user == null) return;
+    setState(() => _loadingSuggestedBudget = true);
+    final plan = await BudgetService.getLatestPlan(user.id);
+    setState(() {
+      _suggestedBudget = plan;
+      _loadingSuggestedBudget = false;
+    });
+  }
+
+  /// Applies the budget slice that matches the currently selected service.
+  void _applySuggestedBudget() {
+    if (_suggestedBudget == null) return;
+
+    // Auto-fill guest count if empty
+    if (_guestController.text.isEmpty) {
+      _guestController.text = _suggestedBudget!.guestCount.toString();
+    }
+
+    // Find matching budget category for the selected service
+    final budgetCatId = ServiceCategories.budgetCategoryFor(_selectedCategory);
+
+    if (budgetCatId != null) {
+      // Check if this category exists in the saved plan
+      final amount = BudgetService.getCategoryAmount(_suggestedBudget!, budgetCatId);
+      if (amount != null && amount > 0) {
+        setState(() {
+          _budgetController.text = amount.toInt().toString();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+            '✅ Applied ৳${amount.toInt()} — your $_selectedCategory budget from "${_suggestedBudget!.planName}"',
+          ),
+          backgroundColor: AppColors.success,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+        return;
+      }
+    }
+
+    // This service has no matching budget category — show helpful popup
+    _showNotInBudgetDialog();
+  }
+
+  /// Shown when the selected service is not in the saved budget plan.
+  void _showNotInBudgetDialog() {
+    final plan = _suggestedBudget!;
+    final suggested = BudgetService.suggestAmountForNewService(plan);
+    final unallocated = BudgetService.unallocatedPercent(plan);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(children: [
+          const Text('⚠️', style: TextStyle(fontSize: 22)),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Not in your budget', style: AppTextStyles.headingLarge)),
+        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '"$_selectedCategory" has no allocation in your "${plan.planName}" plan.',
+              style: AppTextStyles.bodyMedium,
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.gold.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.gold.withOpacity(0.3)),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('💡 Suggested amount', style: AppTextStyles.headingSmall),
+                const SizedBox(height: 6),
+                Text(
+                  '৳ ${suggested.toInt()}',
+                  style: AppTextStyles.currencyMedium.copyWith(color: AppColors.gold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  unallocated > 2
+                      ? 'Based on ${unallocated.toStringAsFixed(1)}% unallocated in your plan'
+                      : 'Based on 5% of your total budget (plan is nearly full)',
+                  style: AppTextStyles.bodySmall,
+                ),
+              ]),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'If you confirm, this will be added to your saved plan and filled in the budget field.',
+              style: AppTextStyles.bodySmall,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          OutlinedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Just fill the suggested amount, don't add to plan
+              setState(() => _budgetController.text = suggested.toInt().toString());
+            },
+            child: const Text('Use suggestion only'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              setState(() => _budgetController.text = suggested.toInt().toString());
+              // Add to saved plan
+              final pct = suggested / plan.totalBudget * 100;
+              final added = await BudgetService.addCategoryToPlan(
+                plan: plan,
+                categoryId: _selectedCategory.toLowerCase().replaceAll(' ', '_').replaceAll('&', 'and'),
+                categoryName: _selectedCategory,
+                allocatedPercent: pct,
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(added
+                      ? '✅ "$_selectedCategory" added to your budget plan!'
+                      : '⚠️ Amount applied. Could not update saved plan.'),
+                  backgroundColor: added ? AppColors.success : AppColors.warning,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ));
+                // Reload the plan so next time shows the new category
+                await _loadSuggestedBudget();
+              }
+            },
+            child: const Text('Confirm & Add to Plan'),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -69,32 +222,45 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
     }
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final user = AuthService.currentUser;
     if (user == null) return;
 
-    PostService.createPost(
+    // Show loading on the button
+    setState(() => _currentStep = _currentStep); // trigger rebuild for loading
+
+    final post = await PostService.createPost(
       host: user,
       location: _location,
-      eventDate:
-          _eventDate ?? DateTime.now().add(const Duration(days: 30)),
+      eventDate: _eventDate ?? DateTime.now().add(const Duration(days: 30)),
       guestCapacity: int.tryParse(_guestController.text) ?? 100,
       serviceCategory: _selectedCategory,
       budgetCeiling: int.tryParse(_budgetController.text) ?? 0,
       description: _descController.text.trim(),
+      budgetPlanId: _suggestedBudget?.id,
     );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('🎉 Post published! Vendors will start bidding soon.'),
-        backgroundColor: AppColors.success,
+    if (!mounted) return;
+
+    if (post == null) {
+      // Creation failed — stay on screen, show error
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('❌ Failed to publish post. Please try again.'),
+        backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+      return; // DON'T pop — let the host try again
+    }
 
-    Navigator.pop(context); // return to host home / my posts
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: const Text('🎉 Post published! Vendors will start bidding soon.'),
+      backgroundColor: AppColors.success,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    ));
+
+    Navigator.pop(context);
   }
 
   @override
@@ -103,7 +269,7 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
+      body: StaticMeshBackground(child: Column(
         children: [
           _buildHeader(steps),
           _StepIndicator(currentStep: _currentStep, steps: steps),
@@ -128,6 +294,9 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
                   descController: _descController,
                   onCategoryChanged: (c) =>
                       setState(() => _selectedCategory = c),
+                  suggestedBudget: _suggestedBudget,
+                  loadingSuggestedBudget: _loadingSuggestedBudget,
+                  onApplySuggestedBudget: _applySuggestedBudget,
                 ),
                 _Step3Review(
                   location: _location,
@@ -142,7 +311,7 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
           ),
           _buildNavButtons(),
         ],
-      ),
+      )),
     );
   }
 
@@ -385,6 +554,9 @@ class _Step2ServiceNeeds extends StatelessWidget {
   final TextEditingController budgetController;
   final TextEditingController descController;
   final ValueChanged<String> onCategoryChanged;
+  final SavedBudgetPlan? suggestedBudget;
+  final bool loadingSuggestedBudget;
+  final VoidCallback onApplySuggestedBudget;
 
   const _Step2ServiceNeeds({
     required this.selectedCategory,
@@ -392,6 +564,9 @@ class _Step2ServiceNeeds extends StatelessWidget {
     required this.budgetController,
     required this.descController,
     required this.onCategoryChanged,
+    this.suggestedBudget,
+    this.loadingSuggestedBudget = false,
+    required this.onApplySuggestedBudget,
   });
 
   @override
@@ -450,6 +625,67 @@ class _Step2ServiceNeeds extends StatelessWidget {
             }).toList(),
           ),
           const SizedBox(height: 20),
+          // ── Budget Suggestion Banner ──────────────────────────────────────
+          if (loadingSuggestedBudget)
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12),
+              child: LinearProgressIndicator(color: AppColors.crimson, backgroundColor: Colors.transparent),
+            )
+          else if (suggestedBudget != null)
+            Builder(builder: (context) {
+              // Find the specific allocation for the currently selected service
+              final budgetCatId = ServiceCategories.budgetCategoryFor(selectedCategory);
+              double? catAmount;
+              if (budgetCatId != null) {
+                final match = suggestedBudget!.categories
+                    .where((c) => c.id == budgetCatId)
+                    .toList();
+                if (match.isNotEmpty && match.first.allocatedPercent > 0) {
+                  catAmount = suggestedBudget!.totalBudget * match.first.allocatedPercent / 100;
+                }
+              }
+              return GlassCard(
+                backgroundColor: AppColors.gold.withOpacity(0.07),
+                borderColor: AppColors.gold.withOpacity(0.25),
+                padding: const EdgeInsets.all(14),
+                child: Row(children: [
+                  const Text('💰', style: TextStyle(fontSize: 22)),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Saved budget available!', style: AppTextStyles.headingSmall),
+                    const SizedBox(height: 2),
+                    if (catAmount != null)
+                      Text(
+                        '৳ ${catAmount.toInt()} for $selectedCategory',
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.gold,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      )
+                    else
+                      Text(
+                        'No allocation found for $selectedCategory',
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.charcoalLight),
+                      ),
+                    Text(
+                      'Total plan: ৳ ${suggestedBudget!.totalBudget.toInt()} · ${suggestedBudget!.planName}',
+                      style: AppTextStyles.bodySmall,
+                    ),
+                  ])),
+                  ElevatedButton(
+                    onPressed: onApplySuggestedBudget,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.gold,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      textStyle: AppTextStyles.labelMedium.copyWith(fontSize: 11),
+                    ),
+                    child: const Text('Apply'),
+                  ),
+                ]),
+              );
+            }),
+          const SizedBox(height: 12),
           GlassCard(
             child: Column(
               children: [
