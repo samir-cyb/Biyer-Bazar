@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,11 +11,16 @@ import '../../services/auth_service.dart';
 import '../../services/profile_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/mesh_background.dart';
-import '../auth/welcome_screen.dart';
 import '../vendor/vendor_profile_setup.dart';
 import '../../services/notification_service.dart';
 import '../../services/chat_service.dart';
 import '../chat/chat_screen.dart';
+import '../host/my_posts_screen.dart';
+import '../host/host_home.dart';
+import '../budget/budget_dashboard.dart';
+import '../vendor/my_bids_screen.dart';
+import '../vendor/vendor_home.dart';
+import '../shell/app_shell.dart';
 
 class ProfileScreen extends StatefulWidget {
   final AppUser? user;
@@ -50,10 +54,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (picked == null || _user == null) return;
 
     setState(() => _uploading = true);
-    final url = await ProfileService.uploadAvatar(File(picked.path), _user!.id);
+    final url = await ProfileService.uploadAvatar(picked, _user!.id);
     if (url != null) {
       await AuthService.loadCurrentUser();
-      setState(() { _user = AuthService.currentUser; });
+      if (mounted) setState(() { _user = AuthService.currentUser; });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: const Text('✅ Profile picture updated!'),
@@ -63,7 +67,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ));
       }
     }
-    setState(() => _uploading = false);
+    if (mounted) setState(() => _uploading = false);
   }
 
   @override
@@ -84,7 +88,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           SliverAppBar(
             expandedHeight: 240,
             pinned: true,
-            backgroundColor: AppColors.charcoal,
+            backgroundColor: AppColors.background,
+            foregroundColor: AppColors.charcoal,
+            surfaceTintColor: Colors.transparent,
             flexibleSpace: FlexibleSpaceBar(
               background: _ProfileHero(
                 user: u,
@@ -99,7 +105,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Stack(
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.notifications_rounded, color: Colors.white),
+                      icon: const Icon(Icons.notifications_rounded, color: AppColors.charcoal),
                       tooltip: 'Notifications',
                       onPressed: () => _showNotificationsSheet(context, u.id),
                     ),
@@ -122,7 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               if (u.role == UserRole.vendor)
                 IconButton(
-                  icon: const Icon(Icons.edit_rounded, color: Colors.white),
+                  icon: const Icon(Icons.edit_rounded, color: AppColors.charcoal),
                   tooltip: 'Edit Profile',
                   onPressed: () => Navigator.push(
                     context,
@@ -134,7 +140,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               IconButton(
-                icon: const Icon(Icons.logout_rounded, color: Colors.white),
+                icon: const Icon(Icons.logout_rounded, color: AppColors.error),
                 tooltip: 'Sign Out',
                 onPressed: () => _confirmLogout(context),
               ),
@@ -146,6 +152,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               delegate: SliverChildListDelegate([
                 _LanguageToggleCard(),
                 const SizedBox(height: 16),
+                // Quick access — role-specific feature buttons
+                if (u.role == UserRole.host || u.role == UserRole.vendor)
+                  _QuickAccessCard(user: u),
+                if (u.role == UserRole.host || u.role == UserRole.vendor)
+                  const SizedBox(height: 16),
                 _InfoCard(user: u),
                 if (u.role == UserRole.vendor) ...[
                   const SizedBox(height: 16),
@@ -282,20 +293,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (_) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Sign Out?', style: AppTextStyles.headingLarge),
-        content: Text('You will be returned to the welcome screen.', style: AppTextStyles.bodyMedium),
+        content: Text('You will be signed out.', style: AppTextStyles.bodyMedium),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () {
+              Navigator.pop(context);
               AuthService.logout();
-              Navigator.of(context).pushAndRemoveUntil(
-                PageRouteBuilder(
-                  pageBuilder: (_, __, ___) => const WelcomeScreen(),
-                  transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-                  transitionDuration: const Duration(milliseconds: 400),
-                ),
-                (_) => false,
-              );
+              AppShell.of(context)?.logout();
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
             child: const Text('Sign Out'),
@@ -319,9 +324,16 @@ class _ProfileHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
+        // Light premium gradient: cream to soft roleColor tint
         gradient: LinearGradient(
           begin: Alignment.topLeft, end: Alignment.bottomRight,
-          colors: [AppColors.charcoal, roleColor.withOpacity(0.7)],
+          colors: [
+            AppColors.background,
+            roleColor.withOpacity(0.08),
+          ],
+        ),
+        border: Border(
+          bottom: BorderSide(color: roleColor.withOpacity(0.15), width: 1),
         ),
       ),
       child: SafeArea(
@@ -339,26 +351,30 @@ class _ProfileHero extends StatelessWidget {
                     GestureDetector(
                       onTap: onPickPhoto,
                       child: Container(
-                        width: 80, height: 80,
+                        width: 84, height: 84,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: roleColor.withOpacity(0.35),
-                          border: Border.all(color: Colors.white.withOpacity(0.4), width: 2.5),
+                          color: roleColor.withOpacity(0.12),
+                          border: Border.all(color: roleColor.withOpacity(0.35), width: 2.5),
+                          boxShadow: [BoxShadow(
+                            color: roleColor.withOpacity(0.20),
+                            blurRadius: 20, offset: const Offset(0, 6),
+                          )],
                         ),
                         child: uploading
-                            ? const Center(child: SizedBox(width: 24, height: 24,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
+                            ? Center(child: SizedBox(width: 24, height: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: roleColor)))
                             : user.profilePictureUrl != null
                                 ? ClipOval(child: CachedNetworkImage(
                                     imageUrl: user.profilePictureUrl!,
-                                    fit: BoxFit.cover, width: 80, height: 80,
+                                    fit: BoxFit.cover, width: 84, height: 84,
                                     placeholder: (_, __) => Center(child: Text(user.initials,
-                                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold))),
+                                        style: TextStyle(color: roleColor, fontSize: 28, fontWeight: FontWeight.bold))),
                                     errorWidget: (_, __, ___) => Center(child: Text(user.initials,
-                                        style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold))),
+                                        style: TextStyle(color: roleColor, fontSize: 28, fontWeight: FontWeight.bold))),
                                   ))
                                 : Center(child: Text(user.initials,
-                                    style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold))),
+                                    style: TextStyle(color: roleColor, fontSize: 30, fontWeight: FontWeight.bold))),
                       ),
                     ),
                     // Camera badge
@@ -367,12 +383,13 @@ class _ProfileHero extends StatelessWidget {
                       child: GestureDetector(
                         onTap: onPickPhoto,
                         child: Container(
-                          width: 26, height: 26,
+                          width: 28, height: 28,
                           decoration: BoxDecoration(
                             color: roleColor, shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
+                            border: Border.all(color: AppColors.background, width: 2.5),
+                            boxShadow: [BoxShadow(color: roleColor.withOpacity(0.35), blurRadius: 8)],
                           ),
-                          child: const Icon(Icons.camera_alt_rounded, size: 13, color: Colors.white),
+                          child: const Icon(Icons.camera_alt_rounded, size: 14, color: Colors.white),
                         ),
                       ),
                     ),
@@ -382,20 +399,25 @@ class _ProfileHero extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(user.businessName ?? user.name,
-                          style: AppTextStyles.displaySmall.copyWith(color: Colors.white, fontSize: 20)),
+                          style: AppTextStyles.displaySmall.copyWith(
+                              color: AppColors.charcoal, fontSize: 20)),
                       if (user.email.isNotEmpty)
                         Text(user.email,
-                            style: AppTextStyles.bodySmall.copyWith(color: Colors.white.withOpacity(0.65))),
-                      const SizedBox(height: 6),
+                            style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.charcoalLight)),
+                      const SizedBox(height: 8),
                       Row(children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.18),
+                            color: roleColor.withOpacity(0.10),
                             borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: roleColor.withOpacity(0.25)),
                           ),
                           child: Text('${user.role.emoji}  ${user.role.label}',
-                              style: AppTextStyles.labelMedium.copyWith(color: Colors.white, fontSize: 11)),
+                              style: AppTextStyles.labelMedium.copyWith(
+                                  color: roleColor, fontSize: 11,
+                                  fontWeight: FontWeight.w700)),
                         ),
                         if (user.role == UserRole.vendor) ...[
                           const SizedBox(width: 8),
@@ -424,7 +446,7 @@ class _BadgePill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(color: c.withOpacity(0.22), borderRadius: BorderRadius.circular(20)),
       child: Text('${tier.emoji} ${tier.label}',
-          style: AppTextStyles.labelMedium.copyWith(color: Colors.white, fontSize: 11)),
+          style: AppTextStyles.labelMedium.copyWith(color: c, fontSize: 11, fontWeight: FontWeight.w700)),
     );
   }
 }
@@ -713,6 +735,191 @@ class _HelpSupportCardState extends State<_HelpSupportCard> {
               ),
       ]),
     ).animate(delay: 250.ms).fadeIn(duration: 400.ms);
+  }
+}
+
+// ── Quick Access Card (role-specific feature buttons) ─────────────────────────
+class _QuickAccessCard extends StatelessWidget {
+  final AppUser user;
+  const _QuickAccessCard({required this.user});
+
+  void _push(BuildContext context, Widget screen) {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => screen,
+        transitionsBuilder: (_, a, __, c) =>
+            FadeTransition(opacity: a, child: c),
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isHost = user.role == UserRole.host;
+    final isVendor = user.role == UserRole.vendor;
+
+    return GlassCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Text('⚡', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 8),
+            Text('Quick Access', style: AppTextStyles.headingMedium),
+          ]),
+          const SizedBox(height: 16),
+
+          // Host: Dashboard + My Posts, then Budget row
+          if (isHost) ...[
+            Row(children: [
+              Expanded(
+                child: _QuickBtn(
+                  icon: Icons.dashboard_rounded,
+                  label: 'Dashboard',
+                  desc: 'Your activity\noverview',
+                  color: AppColors.charcoal,
+                  onTap: () => _push(context, HostHome(
+                    onNavigate: (idx) {
+                      Navigator.pop(context);
+                      AppShell.of(context)?.goToTab(idx);
+                    },
+                  )),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickBtn(
+                  icon: Icons.article_rounded,
+                  label: 'My Posts',
+                  desc: 'View & manage\nyour event posts',
+                  color: AppColors.crimson,
+                  onTap: () => _push(context, const MyPostsScreen()),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            _QuickBtn(
+              icon: Icons.calculate_rounded,
+              label: 'Budget',
+              desc: 'Track your wedding budget',
+              color: AppColors.gold,
+              onTap: () => _push(context, const BudgetDashboard()),
+              wide: true,
+            ),
+          ],
+
+          // Vendor: Dashboard + My Bids
+          if (isVendor)
+            Row(children: [
+              Expanded(
+                child: _QuickBtn(
+                  icon: Icons.dashboard_rounded,
+                  label: 'Dashboard',
+                  desc: 'Your activity\noverview',
+                  color: AppColors.charcoal,
+                  onTap: () => _push(context, VendorHome()),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuickBtn(
+                  icon: Icons.gavel_rounded,
+                  label: 'My Bids',
+                  desc: 'Track & manage\nyour bids',
+                  color: AppColors.gold,
+                  onTap: () => _push(context, const MyBidsScreen()),
+                ),
+              ),
+            ]),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: 0.08, end: 0);
+  }
+}
+
+class _QuickBtn extends StatefulWidget {
+  final IconData icon;
+  final String label, desc;
+  final Color color;
+  final VoidCallback onTap;
+  final bool wide;
+  const _QuickBtn({
+    required this.icon, required this.label, required this.desc,
+    required this.color, required this.onTap, this.wide = false,
+  });
+  @override
+  State<_QuickBtn> createState() => _QuickBtnState();
+}
+
+class _QuickBtnState extends State<_QuickBtn> {
+  bool _pressed = false;
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) { setState(() => _pressed = false); widget.onTap(); },
+      onTapCancel: () => setState(() => _pressed = false),
+      child: AnimatedScale(
+        scale: _pressed ? 0.96 : 1.0,
+        duration: const Duration(milliseconds: 100),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: widget.color.withOpacity(0.07),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: widget.color.withOpacity(0.18)),
+          ),
+          child: widget.wide
+              ? Row(children: [
+                  Container(
+                    width: 38, height: 38,
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(widget.icon, color: widget.color, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.label,
+                          style: AppTextStyles.headingSmall.copyWith(
+                              color: widget.color)),
+                      const SizedBox(height: 2),
+                      Text(widget.desc,
+                          style: AppTextStyles.bodySmall.copyWith(
+                              fontSize: 10, color: AppColors.charcoalLight)),
+                    ],
+                  )),
+                ])
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 38, height: 38,
+                      decoration: BoxDecoration(
+                        color: widget.color.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(widget.icon, color: widget.color, size: 20),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(widget.label,
+                        style: AppTextStyles.headingSmall.copyWith(
+                            color: widget.color)),
+                    const SizedBox(height: 3),
+                    Text(widget.desc,
+                        style: AppTextStyles.bodySmall.copyWith(
+                            fontSize: 10, color: AppColors.charcoalLight,
+                            height: 1.4)),
+                  ],
+                ),
+        ),
+      ),
+    );
   }
 }
 

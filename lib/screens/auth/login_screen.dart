@@ -6,9 +6,8 @@ import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/mesh_background.dart';
-import '../host/host_shell.dart';
-import '../vendor/vendor_shell.dart';
 import '../admin/admin_shell.dart';
+import '../shell/app_shell.dart';
 import 'signup_screen.dart';
 import 'forgot_password_screen.dart';
 
@@ -43,24 +42,25 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _errorMsg = result.errorMessage);
       return;
     }
-    if (mounted) _navigateByRole(result.user!.role);
+    if (mounted) _afterLogin(result.user!.role);
   }
 
-  void _navigateByRole(UserRole role) {
-    Widget shell;
-    switch (role) {
-      case UserRole.host:   shell = const HostShell(); break;
-      case UserRole.vendor: shell = const VendorShell(); break;
-      case UserRole.admin:  shell = const AdminShell(); break;
+  void _afterLogin(UserRole role) {
+    if (role == UserRole.admin) {
+      // Admin gets their own back-office shell
+      Navigator.of(context).pushAndRemoveUntil(
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const AdminShell(),
+          transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+          transitionDuration: const Duration(milliseconds: 400),
+        ),
+        (_) => false,
+      );
+    } else {
+      // Everyone else pops back to AppShell which calls refresh()
+      AppShell.of(context)?.refresh();
+      Navigator.of(context).pop();
     }
-    Navigator.of(context).pushAndRemoveUntil(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => shell,
-        transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-        transitionDuration: const Duration(milliseconds: 400),
-      ),
-      (_) => false,
-    );
   }
 
   @override
@@ -102,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             fontSize: 38,
                           )),
                       const SizedBox(height: 10),
-                      Text('Sign in to continue to BiyerBajar.',
+                      Text('Sign in to continue to Utsob.',
                           style: AppTextStyles.bodyLarge.copyWith(
                             color: Colors.white.withOpacity(0.60),
                           )),

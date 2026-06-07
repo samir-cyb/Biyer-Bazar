@@ -69,6 +69,22 @@ class BookingService {
         dev.log('[Booking] notify vendor error: $e', name: 'BiyerBajar');
       }
 
+      // Increment vendor's total_bookings counter
+      try {
+        final vpRow = await _db
+            .from('vendor_profiles')
+            .select('total_bookings')
+            .eq('user_id', vendorId)
+            .maybeSingle();
+        final current = (vpRow?['total_bookings'] as int?) ?? 0;
+        await _db
+            .from('vendor_profiles')
+            .update({'total_bookings': current + 1})
+            .eq('user_id', vendorId);
+      } catch (e) {
+        dev.log('[Booking] increment total_bookings error: $e', name: 'BiyerBajar');
+      }
+
       return Booking.fromMap(row);
     } catch (e) {
       dev.log('[Booking] createBooking error: $e', name: 'BiyerBajar');
@@ -325,8 +341,9 @@ class VendorPackageService {
           .select()
           .eq('approval_status', 'approved');
 
-      if (category != null && category.isNotEmpty && category != 'All') {
-        query = query.eq('category', category.toLowerCase());
+      if (category != null && category.isNotEmpty) {
+        // category is a wildcard pattern e.g. '%Photo%' — ilike for case-insensitive partial match
+        query = query.ilike('category', category);
       }
       if (maxBudget != null) {
         query = query.lte('price_range_min', maxBudget);

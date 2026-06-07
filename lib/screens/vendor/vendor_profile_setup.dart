@@ -1,13 +1,17 @@
 import 'dart:developer' as dev;
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/app_colors.dart';
 import '../../core/app_text_styles.dart';
 import '../../core/app_strings.dart';
 import '../../core/service_categories.dart';
+import '../../core/vendor_category_config.dart';
 import '../../models/vendor_package_model.dart';
 import '../../services/auth_service.dart';
 import '../../services/booking_service.dart';
+import '../../services/profile_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/mesh_background.dart';
@@ -37,12 +41,16 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
   String _avail     = 'available';
   List<String> _tags = [];
   final _tagCtrl    = TextEditingController();
+  String? _coverPhotoUrl;
   bool _savingProfile = false;
 
   static const _cities = [
     'Dhaka', 'Chittagong', 'Sylhet', 'Rajshahi',
     'Khulna', 'Barishal', 'Cumilla', 'Mymensingh', 'Rangpur', 'Narayanganj',
   ];
+
+  // Category-specific details
+  Map<String, dynamic> _categoryDetails = {};
 
   // Packages
   List<VendorPackage> _packages = [];
@@ -57,6 +65,7 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
     _tabCtrl = TabController(length: 3, vsync: this);
     _prefillFromCurrentUser();
     _loadPackages();
+    _loadCategoryDetails();
   }
 
   void _prefillFromCurrentUser() {
@@ -73,6 +82,7 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
     if (u.location != null && _cities.contains(u.location)) _city = u.location!;
     if (u.specialtyTags.isNotEmpty) _tags = List<String>.from(u.specialtyTags);
     _avail = u.availabilityStatus;
+    _coverPhotoUrl = u.coverPhotoUrl;
   }
 
   Future<void> _loadPackages() async {
@@ -85,6 +95,25 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
       _discounts = discs;
       _loadingPkgs = false;
     });
+  }
+
+  Future<void> _loadCategoryDetails() async {
+    final u = AuthService.currentUser;
+    if (u == null) return;
+    try {
+      final row = await SupabaseService.vendorProfiles
+          .select('category_details')
+          .eq('user_id', u.id)
+          .maybeSingle();
+      if (row != null && row['category_details'] != null && mounted) {
+        final raw = row['category_details'];
+        setState(() {
+          _categoryDetails = raw is Map
+              ? Map<String, dynamic>.from(raw)
+              : {};
+        });
+      }
+    } catch (_) {}
   }
 
   @override
@@ -113,6 +142,8 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
       'years_experience':    int.tryParse(_expCtrl.text) ?? 0,
       'specialty_tags':      _tags,
       'availability_status': _avail,
+      'category_details':    _categoryDetails,
+      if (_coverPhotoUrl != null) 'cover_photo_url': _coverPhotoUrl,
       // Only reset to pending if not already approved — don't penalise minor edits
       'approval_status': u.approvalStatus == 'approved' ? 'approved' : 'pending',
     }..removeWhere((_, v) => v == null); // strip null values to avoid type errors
@@ -161,7 +192,7 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
       }
     }
 
-    setState(() => _savingProfile = false);
+    if (mounted) setState(() => _savingProfile = false);
   }
 
   @override
@@ -215,12 +246,19 @@ class _VendorProfileSetupScreenState extends State<VendorProfileSetupScreen>
                 onRemoveTag:       (t) => setState(() => _tags.remove(t)),
                 onSave: _saveProfile,
                 saving: _savingProfile,
+                vendorId: AuthService.currentUser?.id ?? '',
+                portfolioUrls: AuthService.currentUser?.portfolioUrls ?? [],
+                coverPhotoUrl: _coverPhotoUrl,
+                onCoverPhotoChanged: (url) => setState(() => _coverPhotoUrl = url),
+                categoryDetails: _categoryDetails,
+                onCategoryDetailsChanged: (m) => setState(() => _categoryDetails = m),
               ),
               _PackagesTab(
                 packages: _packages,
                 loading: _loadingPkgs,
                 vendorId: AuthService.currentUser?.id ?? '',
                 onRefresh: _loadPackages,
+                category: _category,
               ),
               _DiscountsTab(
                 discounts: _discounts,
@@ -247,6 +285,12 @@ class _ProfileTab extends StatelessWidget {
   final ValueChanged<String> onRemoveTag;
   final VoidCallback onSave;
   final bool saving;
+  final String vendorId;
+  final List<String> portfolioUrls;
+  final String? coverPhotoUrl;
+  final ValueChanged<String?> onCoverPhotoChanged;
+  final Map<String, dynamic> categoryDetails;
+  final ValueChanged<Map<String, dynamic>> onCategoryDetailsChanged;
 
   const _ProfileTab({
     required this.bizCtrl,    required this.bioCtrl,
@@ -260,6 +304,12 @@ class _ProfileTab extends StatelessWidget {
     required this.onAvailChanged,    required this.onAddTag,
     required this.onRemoveTag,       required this.onSave,
     required this.saving,
+    required this.vendorId,
+    required this.portfolioUrls,
+    required this.coverPhotoUrl,
+    required this.onCoverPhotoChanged,
+    required this.categoryDetails,
+    required this.onCategoryDetailsChanged,
   });
 
   @override
@@ -302,6 +352,19 @@ class _ProfileTab extends StatelessWidget {
               decoration: _dropdownDecor(),
             ),
           ),
+          // ── Category-specific tag checkboxes ───────────────────────
+          _CategorySpecificSection(
+            category: category,
+            selectedTags: tags,
+            onAddTag: onAddTag,
+            onRemoveTag: onRemoveTag,
+          ),
+          // ── Category-specific structured fields ─────────────────────
+          _CategoryDetailsSection(
+            category: category,
+            initialDetails: categoryDetails,
+            onChanged: onCategoryDetailsChanged,
+          ),
           _FieldSection(
             title: 'City',
             child: DropdownButtonFormField<String>(
@@ -325,8 +388,12 @@ class _ProfileTab extends StatelessWidget {
             ]),
           ),
           _FieldSection(
-            title: '${AppStrings.capacity} (venues only)',
-            child: _TextField(ctrl: capCtrl, hint: 'e.g. 500 guests', isNum: true),
+            title: _capacityLabel(category),
+            child: _TextField(ctrl: capCtrl,
+                hint: category == 'catering' ? 'e.g. 100 guests min'
+                    : category == 'venue'    ? 'e.g. 500 guests max'
+                    : 'Optional',
+                isNum: true),
           ),
           _FieldSection(
             title: 'Years of Experience',
@@ -382,6 +449,16 @@ class _ProfileTab extends StatelessWidget {
               ],
             ),
           ),
+          // ── Portfolio photos ──────────────────────────────────────────
+          _FieldSection(
+            title: '${AppStrings.portfolio} (max 10 — tap ⭐ to set as cover)',
+            child: _PortfolioUploadSection(
+              vendorId: vendorId,
+              initialUrls: portfolioUrls,
+              initialCoverUrl: coverPhotoUrl,
+              onCoverChanged: onCoverPhotoChanged,
+            ),
+          ),
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
@@ -402,6 +479,15 @@ class _ProfileTab extends StatelessWidget {
     );
   }
 
+  static String _capacityLabel(String cat) {
+    switch (cat.toLowerCase()) {
+      case 'venue':    return 'Venue Capacity (max guests)';
+      case 'catering': return 'Minimum Guests Required';
+      case 'logistics': return 'Number of Vehicles';
+      default:         return '${AppStrings.capacity} (optional)';
+    }
+  }
+
   InputDecoration _dropdownDecor() => InputDecoration(
     filled: true,
     fillColor: Colors.white,
@@ -418,6 +504,471 @@ class _ProfileTab extends StatelessWidget {
   );
 }
 
+// ── Category-Specific Tag Section ─────────────────────────────────────────────
+
+class _CategoryMeta {
+  final String label;
+  final List<String> options;
+  const _CategoryMeta({required this.label, required this.options});
+}
+
+class _CategorySpecificSection extends StatelessWidget {
+  final String category;
+  final List<String> selectedTags;
+  final ValueChanged<String> onAddTag;
+  final ValueChanged<String> onRemoveTag;
+
+  static const _meta = <String, _CategoryMeta>{
+    'venue': _CategoryMeta(
+      label: '🏛 Venue Features',
+      options: ['Indoor Hall', 'Outdoor Garden', 'Rooftop Space', 'Poolside',
+        'AC Facility', 'Generator Backup', 'Parking', 'Stage Setup',
+        'Bridal Room', 'Min 100 Guests', 'Min 200 Guests', 'Min 500 Guests'],
+    ),
+    'catering': _CategoryMeta(
+      label: '🍽 Catering Specialties',
+      options: ['Bangladeshi Cuisine', 'Chinese', 'Continental', 'BBQ Live',
+        'Buffet Style', 'Halal Certified', 'Dessert Counter',
+        'Mocktails Bar', 'Custom Menu', 'Home Delivery'],
+    ),
+    'photography': _CategoryMeta(
+      label: '📷 Photography Style',
+      options: ['DSLR Photography', 'Drone Shots', '4K Video', 'Cinematic Edit',
+        'Same Day Highlights', 'Candid Photography', 'Traditional Poses',
+        'Pre-Wedding Shoot', 'RAW Files', 'International Delivery'],
+    ),
+    'decor': _CategoryMeta(
+      label: '✨ Decor Style',
+      options: ['Floral Decor', 'LED Setup', 'Traditional Bengali', 'Modern Minimalist',
+        'Bollywood Theme', 'Mandap Setup', 'Stage Backdrop',
+        'Table Setting', 'Entrance Arch', 'Car Decoration'],
+    ),
+    'makeup': _CategoryMeta(
+      label: '💄 Makeup & Styling',
+      options: ['Bridal Makeup', 'Airbrush Makeup', 'HD Foundation', 'Natural Look',
+        'Party Makeup', 'Trial Session', 'Hair Styling', 'Saree Draping',
+        'Nail Art', 'Home Service'],
+    ),
+    'attire': _CategoryMeta(
+      label: '💍 Attire & Jewelry',
+      options: ['Gold Jewelry', 'Diamond Jewelry', 'Silver Jewelry', 'Bridal Set',
+        'Custom Orders', 'Rental Available', 'Lehenga', 'Saree',
+        'Sherewani', 'Indo-Western'],
+    ),
+    'logistics': _CategoryMeta(
+      label: '🚗 Vehicle & Logistics',
+      options: ['AC Vehicles', 'Flower Decorated Car', 'Bus/Microbus', 'Bride Car',
+        'Guest Pickup', 'Airport Transfer', 'Outstation Service',
+        'Driver Included', 'Fuel Included', 'Night Service'],
+    ),
+  };
+
+  const _CategorySpecificSection({
+    required this.category,
+    required this.selectedTags,
+    required this.onAddTag,
+    required this.onRemoveTag,
+  });
+
+  /// Maps full ServiceCategories names → short key used in _meta.
+  /// e.g. 'Photography & Video' → 'photography'
+  static String? _shortKey(String cat) {
+    final c = cat.toLowerCase();
+    if (c.contains('venue') || c.contains('hall')) return 'venue';
+    if (c.contains('cater') || c.contains('food') || c.contains('cake')) return 'catering';
+    if (c.contains('photo') || c.contains('video') || c.contains('cine') || c.contains('drone')) return 'photography';
+    if (c.contains('decor') || c.contains('light') || c.contains('flower') ||
+        c.contains('garland') || c.contains('stage') || c.contains('mandap')) return 'decor';
+    if (c.contains('makeup') || c.contains('mehendi') || c.contains('henna') ||
+        c.contains('beauty') || c.contains('salon')) return 'makeup';
+    if (c.contains('attire') || c.contains('jewel') || c.contains('bridal') ||
+        c.contains('groom') || c.contains('wear')) return 'attire';
+    if (c.contains('logistic') || c.contains('transport') || c.contains('car') ||
+        c.contains('dj') || c.contains('sound') || c.contains('band') ||
+        c.contains('music') || c.contains('mc') || c.contains('security')) return 'logistics';
+    return null;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final m = _meta[_shortKey(category)];
+    if (m == null) return const SizedBox.shrink();
+
+    return _FieldSection(
+      title: m.label,
+      child: Wrap(
+        spacing: 8, runSpacing: 8,
+        children: m.options.map((opt) {
+          final selected = selectedTags.contains(opt);
+          return GestureDetector(
+            onTap: () => selected ? onRemoveTag(opt) : onAddTag(opt),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.crimson.withOpacity(0.10)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: selected
+                      ? AppColors.crimson
+                      : AppColors.charcoal.withOpacity(0.15),
+                  width: selected ? 1.5 : 1.0,
+                ),
+                boxShadow: selected ? [
+                  BoxShadow(
+                    color: AppColors.crimson.withOpacity(0.12),
+                    blurRadius: 6, offset: const Offset(0, 2)),
+                ] : null,
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                if (selected) ...[
+                  const Icon(Icons.check_circle_rounded,
+                      size: 13, color: AppColors.crimson),
+                  const SizedBox(width: 4),
+                ],
+                Text(opt,
+                    style: AppTextStyles.bodySmall.copyWith(
+                        fontSize: 12,
+                        color: selected ? AppColors.crimson : AppColors.charcoal,
+                        fontWeight: selected ? FontWeight.w700 : FontWeight.w400)),
+              ]),
+            ),
+          );
+        }).toList(),
+      ),
+    ).animate().fadeIn(duration: 250.ms).slideY(begin: 0.05, end: 0);
+  }
+}
+
+// ── Portfolio Upload Section ───────────────────────────────────────────────────
+
+class _PortfolioUploadSection extends StatefulWidget {
+  final String vendorId;
+  final List<String> initialUrls;
+  final String? initialCoverUrl;
+  final ValueChanged<String?> onCoverChanged;
+  const _PortfolioUploadSection({
+    required this.vendorId,
+    required this.initialUrls,
+    required this.initialCoverUrl,
+    required this.onCoverChanged,
+  });
+
+  @override
+  State<_PortfolioUploadSection> createState() =>
+      _PortfolioUploadSectionState();
+}
+
+class _PortfolioUploadSectionState extends State<_PortfolioUploadSection> {
+  static const int _maxPhotos = 10;
+  final _picker = ImagePicker();
+  late List<String> _urls;
+  String? _coverUrl;
+  bool _uploading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _urls = List<String>.from(widget.initialUrls);
+    _coverUrl = widget.initialCoverUrl;
+  }
+
+  Future<void> _setCover(String url) async {
+    // Immediately save cover_photo_url to DB
+    try {
+      await SupabaseService.vendorProfiles
+          .update({'cover_photo_url': url})
+          .eq('user_id', widget.vendorId);
+      setState(() => _coverUrl = url);
+      widget.onCoverChanged(url);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('⭐ Cover photo set!'),
+          backgroundColor: AppColors.freshTalent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } catch (e) {
+      dev.log('[Portfolio] setCover error: $e', name: 'Utsob');
+    }
+  }
+
+  Future<void> _addPhoto() async {
+    if (_urls.length >= _maxPhotos) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Maximum $_maxPhotos photos allowed.'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+      return;
+    }
+
+    final picked = await _picker.pickImage(
+      source: ImageSource.gallery,
+      // ── Compression: resize to 1080px and apply 75% JPEG quality ──
+      maxWidth: 1080,
+      maxHeight: 1080,
+      imageQuality: 75,
+    );
+    if (picked == null || !mounted) return;
+
+    setState(() => _uploading = true);
+
+    final url = await ProfileService.uploadPortfolioImage(
+      picked,
+      widget.vendorId,
+    );
+
+    if (url != null) {
+      final updated = [..._urls, url];
+      final saved = await ProfileService.savePortfolioUrls(widget.vendorId, updated);
+      if (saved && mounted) {
+        setState(() => _urls = updated);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('✅ Photo uploaded!'),
+          backgroundColor: AppColors.freshTalent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ));
+      }
+    } else if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('❌ Upload failed. Try again.'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ));
+    }
+
+    if (mounted) setState(() => _uploading = false);
+  }
+
+  Future<void> _removePhoto(String url) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Remove photo?', style: AppTextStyles.headingLarge),
+        content: Text('This will permanently delete the photo.', style: AppTextStyles.bodyMedium),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+
+    setState(() => _uploading = true);
+    await ProfileService.deletePortfolioImage(widget.vendorId, url, _urls);
+    if (mounted) {
+      setState(() {
+        _urls.remove(url);
+        _uploading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = _maxPhotos - _urls.length;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Count chip
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: _urls.length >= _maxPhotos
+                  ? AppColors.error.withOpacity(0.10)
+                  : AppColors.freshTalent.withOpacity(0.10),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _urls.length >= _maxPhotos
+                    ? AppColors.error.withOpacity(0.3)
+                    : AppColors.freshTalent.withOpacity(0.3),
+              ),
+            ),
+            child: Text(
+              '${_urls.length}/$_maxPhotos  •  $remaining slot${remaining == 1 ? '' : 's'} left',
+              style: AppTextStyles.bodySmall.copyWith(
+                fontSize: 11,
+                color: _urls.length >= _maxPhotos
+                    ? AppColors.error
+                    : AppColors.freshTalent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        // Photo grid
+        if (_urls.isNotEmpty)
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
+            itemCount: _urls.length,
+            itemBuilder: (_, i) {
+              final url = _urls[i];
+              final isCover = url == _coverUrl;
+              return Stack(
+                children: [
+                  // Photo
+                  GestureDetector(
+                    onLongPress: () => _setCover(url),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: url,
+                            width: double.infinity,
+                            height: double.infinity,
+                            fit: BoxFit.cover,
+                            placeholder: (_, __) => Container(
+                              color: AppColors.charcoal.withOpacity(0.08),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: AppColors.charcoalLight)),
+                            ),
+                            errorWidget: (_, __, ___) => Container(
+                              color: AppColors.charcoal.withOpacity(0.08),
+                              child: const Icon(Icons.broken_image_rounded,
+                                  color: AppColors.charcoalLight),
+                            ),
+                          ),
+                          // Cover overlay
+                          if (isCover)
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                    color: AppColors.gold, width: 2.5),
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomLeft,
+                                  colors: [
+                                    Colors.black.withOpacity(0.4),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Cover badge (bottom-left)
+                  if (isCover)
+                    Positioned(
+                      bottom: 5, left: 5,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.gold,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.star_rounded, size: 10, color: Colors.white),
+                          SizedBox(width: 2),
+                          Text('Cover', style: TextStyle(
+                              fontSize: 8, color: Colors.white, fontWeight: FontWeight.w700)),
+                        ]),
+                      ),
+                    ),
+                  // Set-as-cover hint (bottom-right, only if not cover)
+                  if (!isCover)
+                    Positioned(
+                      bottom: 4, right: 4,
+                      child: GestureDetector(
+                        onTap: () => _setCover(url),
+                        child: Container(
+                          width: 24, height: 24,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.55),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.star_outline_rounded,
+                              size: 14, color: Colors.white70),
+                        ),
+                      ),
+                    ),
+                  // Delete button (top-right)
+                  Positioned(
+                    top: 4, right: 4,
+                    child: GestureDetector(
+                      onTap: () => _removePhoto(url),
+                      child: Container(
+                        width: 24, height: 24,
+                        decoration: const BoxDecoration(
+                          color: AppColors.error,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close_rounded,
+                            color: Colors.white, size: 14),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        const SizedBox(height: 12),
+        // Add photo button
+        if (_urls.length < _maxPhotos)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _uploading ? null : _addPhoto,
+              icon: _uploading
+                  ? const SizedBox(
+                      width: 16, height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: AppColors.gold))
+                  : const Icon(Icons.add_photo_alternate_rounded,
+                      color: AppColors.gold),
+              label: Text(
+                _uploading ? 'Uploading…' : 'Add Photo',
+                style: AppTextStyles.bodyMedium.copyWith(color: AppColors.gold),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: BorderSide(color: AppColors.gold.withOpacity(0.5)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+        if (_urls.length >= _maxPhotos)
+          Text(
+            'Maximum 10 photos reached. Delete one to add another.',
+            style: AppTextStyles.bodySmall.copyWith(color: AppColors.charcoalLight),
+          ),
+        const SizedBox(height: 4),
+        Text(
+          '📦 Images are auto-compressed to ~150–300 KB before upload.',
+          style: AppTextStyles.bodySmall.copyWith(
+              fontSize: 10, color: AppColors.charcoalLight),
+        ),
+      ],
+    );
+  }
+}
+
 // ── Packages Tab ───────────────────────────────────────────────────────────────
 
 class _PackagesTab extends StatelessWidget {
@@ -425,9 +976,11 @@ class _PackagesTab extends StatelessWidget {
   final bool loading;
   final String vendorId;
   final VoidCallback onRefresh;
+  final String category;
   const _PackagesTab({
     required this.packages, required this.loading,
-    required this.vendorId, required this.onRefresh});
+    required this.vendorId, required this.onRefresh,
+    required this.category});
 
   @override
   Widget build(BuildContext context) {
@@ -437,15 +990,26 @@ class _PackagesTab extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text(AppStrings.myPackages, style: AppTextStyles.headingMedium),
-            ElevatedButton.icon(
-              onPressed: () => _showAddPackageSheet(context),
-              icon: const Icon(Icons.add_rounded, size: 16),
-              label: Text(AppStrings.addPackage),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12))),
-            ),
+            Row(children: [
+              // Template suggestion button
+              if (VendorCategoryConfig.forCategory(category)?.packageTemplates.isNotEmpty == true)
+                TextButton.icon(
+                  onPressed: () => _showTemplatesSheet(context),
+                  icon: const Icon(Icons.auto_fix_high_rounded, size: 15, color: AppColors.gold),
+                  label: Text('Templates',
+                      style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.gold, fontWeight: FontWeight.w700)),
+                ),
+              ElevatedButton.icon(
+                onPressed: () => _showAddPackageSheet(context),
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: Text(AppStrings.addPackage),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12))),
+              ),
+            ]),
           ]),
         ),
         const SizedBox(height: 12),
@@ -482,12 +1046,99 @@ class _PackagesTab extends StatelessWidget {
     );
   }
 
-  void _showAddPackageSheet(BuildContext context) {
+  void _showAddPackageSheet(BuildContext context, {PackageTemplate? template}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => _PackageFormSheet(vendorId: vendorId, onSaved: onRefresh),
+      builder: (_) => _PackageFormSheet(
+          vendorId: vendorId, onSaved: onRefresh, initialTemplate: template),
+    );
+  }
+
+  void _showTemplatesSheet(BuildContext context) {
+    final config = VendorCategoryConfig.forCategory(category);
+    if (config == null || config.packageTemplates.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 30),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.charcoal.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(2)))),
+              const SizedBox(height: 16),
+              Row(children: [
+                const Text('✨', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 8),
+                Text('Package Templates', style: AppTextStyles.headingMedium),
+              ]),
+              const SizedBox(height: 6),
+              Text('Tap a template to pre-fill the package form.',
+                  style: AppTextStyles.bodySmall),
+              const SizedBox(height: 16),
+              ...config.packageTemplates.map((t) => GestureDetector(
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAddPackageSheet(context, template: t);
+                },
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: AppColors.gold.withOpacity(0.25)),
+                    boxShadow: [BoxShadow(
+                        color: AppColors.gold.withOpacity(0.06),
+                        blurRadius: 12, offset: const Offset(0, 3))],
+                  ),
+                  child: Row(children: [
+                    Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(t.name, style: AppTextStyles.headingSmall),
+                      const SizedBox(height: 4),
+                      Text(t.description,
+                          style: AppTextStyles.bodySmall, maxLines: 2),
+                      const SizedBox(height: 6),
+                      Text(
+                        t.priceType == 'per_head'
+                            ? '৳${t.price} / person'
+                            : t.priceType == 'per_day'
+                                ? '৳${t.price} / day'
+                                : '৳${t.price}',
+                        style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.crimson, fontWeight: FontWeight.w700)),
+                    ])),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.gold.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(10)),
+                      child: Text('Use',
+                          style: AppTextStyles.bodySmall.copyWith(
+                              color: AppColors.gold, fontWeight: FontWeight.w700)),
+                    ),
+                  ]),
+                ),
+              )),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -529,7 +1180,9 @@ class _EditablePackageCard extends StatelessWidget {
 class _PackageFormSheet extends StatefulWidget {
   final String vendorId;
   final VoidCallback onSaved;
-  const _PackageFormSheet({required this.vendorId, required this.onSaved});
+  final PackageTemplate? initialTemplate;
+  const _PackageFormSheet({
+    required this.vendorId, required this.onSaved, this.initialTemplate});
 
   @override
   State<_PackageFormSheet> createState() => _PackageFormSheetState();
@@ -544,6 +1197,19 @@ class _PackageFormSheetState extends State<_PackageFormSheet> {
   bool _isPopular  = false;
   bool _saving     = false;
   List<String> _includes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.initialTemplate;
+    if (t != null) {
+      _nameCtrl.text  = t.name;
+      _descCtrl.text  = t.description;
+      _priceCtrl.text = '${t.price}';
+      _priceType      = t.priceType;
+      _includes       = List<String>.from(t.includes);
+    }
+  }
 
   @override
   void dispose() {
@@ -836,6 +1502,256 @@ class _DiscountsTab extends StatelessWidget {
         )),
       ),
     );
+  }
+}
+
+// ── Category-Specific Structured Details Section ──────────────────────────────
+
+class _CategoryDetailsSection extends StatefulWidget {
+  final String category;
+  final Map<String, dynamic> initialDetails;
+  final ValueChanged<Map<String, dynamic>> onChanged;
+
+  const _CategoryDetailsSection({
+    required this.category,
+    required this.initialDetails,
+    required this.onChanged,
+  });
+
+  @override
+  State<_CategoryDetailsSection> createState() =>
+      _CategoryDetailsSectionState();
+}
+
+class _CategoryDetailsSectionState extends State<_CategoryDetailsSection> {
+  final Map<String, TextEditingController> _textCtrls = {};
+  final Map<String, bool> _boolVals = {};
+  final Map<String, String?> _dropdownVals = {};
+  final Map<String, List<String>> _multiselectVals = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _build(widget.category, widget.initialDetails);
+  }
+
+  @override
+  void didUpdateWidget(_CategoryDetailsSection old) {
+    super.didUpdateWidget(old);
+    if (old.category != widget.category) {
+      _disposeAll();
+      _build(widget.category, {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.onChanged(_assembleMap());
+      });
+    }
+  }
+
+  void _build(String category, Map<String, dynamic> init) {
+    final config = VendorCategoryConfig.forCategory(category);
+    if (config == null) return;
+    for (final f in config.fields) {
+      switch (f.type) {
+        case CatFieldType.text:
+        case CatFieldType.number:
+          final ctrl = TextEditingController(
+              text: (init[f.key] ?? '').toString().replaceAll('null', ''));
+          ctrl.addListener(_notify);
+          _textCtrls[f.key] = ctrl;
+          break;
+        case CatFieldType.bool_:
+          _boolVals[f.key] = (init[f.key] as bool?) ?? false;
+          break;
+        case CatFieldType.dropdown:
+          _dropdownVals[f.key] = init[f.key] as String?;
+          break;
+        case CatFieldType.multiselect:
+          final raw = init[f.key];
+          List<String> sel = [];
+          if (raw is List) sel = raw.cast<String>();
+          _multiselectVals[f.key] = List<String>.from(sel);
+          break;
+      }
+    }
+  }
+
+  void _disposeAll() {
+    for (final c in _textCtrls.values) {
+      c.removeListener(_notify);
+      c.dispose();
+    }
+    _textCtrls.clear();
+    _boolVals.clear();
+    _dropdownVals.clear();
+    _multiselectVals.clear();
+  }
+
+  @override
+  void dispose() {
+    _disposeAll();
+    super.dispose();
+  }
+
+  void _notify() => widget.onChanged(_assembleMap());
+
+  Map<String, dynamic> _assembleMap() {
+    final m = <String, dynamic>{};
+    _textCtrls.forEach((k, c) {
+      if (c.text.trim().isNotEmpty) {
+        final n = int.tryParse(c.text.trim());
+        m[k] = n ?? c.text.trim();
+      }
+    });
+    _boolVals.forEach((k, v) => m[k] = v);
+    _dropdownVals.forEach((k, v) { if (v != null) m[k] = v; });
+    _multiselectVals.forEach((k, v) { if (v.isNotEmpty) m[k] = v; });
+    return m;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final config = VendorCategoryConfig.forCategory(widget.category);
+    if (config == null) return const SizedBox.shrink();
+
+    return _FieldSection(
+      title: config.sectionTitle,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: config.fields.map(_buildField).toList(),
+      ),
+    ).animate().fadeIn(duration: 280.ms).slideY(begin: 0.05, end: 0);
+  }
+
+  Widget _buildField(CategoryField field) {
+    switch (field.type) {
+      case CatFieldType.text:
+      case CatFieldType.number:
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _TextField(
+            ctrl: _textCtrls[field.key]!,
+            hint: field.hint ?? '',
+            label: field.label,
+            isNum: field.type == CatFieldType.number,
+          ),
+        );
+
+      case CatFieldType.bool_:
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.charcoal.withOpacity(0.12)),
+          ),
+          child: SwitchListTile(
+            value: _boolVals[field.key] ?? false,
+            activeColor: AppColors.crimson,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+            title: Text(field.label, style: AppTextStyles.bodyMedium),
+            onChanged: (v) {
+              setState(() => _boolVals[field.key] = v);
+              _notify();
+            },
+          ),
+        );
+
+      case CatFieldType.dropdown:
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: DropdownButtonFormField<String>(
+            value: _dropdownVals[field.key],
+            items: field.options!
+                .map((o) => DropdownMenuItem(value: o, child: Text(o)))
+                .toList(),
+            onChanged: (v) {
+              setState(() => _dropdownVals[field.key] = v);
+              _notify();
+            },
+            decoration: InputDecoration(
+              labelText: field.label,
+              filled: true,
+              fillColor: Colors.white,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    BorderSide(color: AppColors.charcoal.withOpacity(0.15))),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide:
+                    BorderSide(color: AppColors.charcoal.withOpacity(0.15))),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: AppColors.crimson)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+            ),
+          ),
+        );
+
+      case CatFieldType.multiselect:
+        final selected = _multiselectVals[field.key] ?? [];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(field.label, style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.charcoalLight, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: field.options!.map((opt) {
+                  final isSel = selected.contains(opt);
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (isSel) selected.remove(opt);
+                        else selected.add(opt);
+                      });
+                      _notify();
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 7),
+                      decoration: BoxDecoration(
+                        color: isSel
+                            ? AppColors.crimson.withOpacity(0.09)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: isSel
+                              ? AppColors.crimson
+                              : AppColors.charcoal.withOpacity(0.15),
+                          width: isSel ? 1.5 : 1.0,
+                        ),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (isSel) ...[
+                          const Icon(Icons.check_circle_rounded,
+                              size: 12, color: AppColors.crimson),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(opt,
+                            style: AppTextStyles.bodySmall.copyWith(
+                                fontSize: 12,
+                                color: isSel
+                                    ? AppColors.crimson
+                                    : AppColors.charcoal,
+                                fontWeight: isSel
+                                    ? FontWeight.w700
+                                    : FontWeight.w400)),
+                      ]),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+    }
   }
 }
 

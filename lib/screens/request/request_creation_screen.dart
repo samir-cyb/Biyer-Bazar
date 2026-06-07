@@ -29,6 +29,7 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
   final _budgetController = TextEditingController();
   String _selectedCategory = ServiceCategories.all.first;
   final _descController = TextEditingController();
+  List<SavedBudgetPlan> _allBudgets = [];
   SavedBudgetPlan? _suggestedBudget;
   bool _loadingSuggestedBudget = false;
 
@@ -49,11 +50,30 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
     final user = AuthService.currentUser;
     if (user == null) return;
     setState(() => _loadingSuggestedBudget = true);
-    final plan = await BudgetService.getLatestPlan(user.id);
+    final plans = await BudgetService.getAllPlans(user.id);
     setState(() {
-      _suggestedBudget = plan;
+      _allBudgets = plans;
+      _suggestedBudget = plans.isNotEmpty ? plans.first : null;
       _loadingSuggestedBudget = false;
     });
+  }
+
+  /// Shows a bottom sheet for the user to pick which saved budget to use.
+  void _showBudgetSelector() {
+    if (_allBudgets.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BudgetSelectorSheet(
+        plans: _allBudgets,
+        selected: _suggestedBudget,
+        onSelect: (plan) {
+          setState(() => _suggestedBudget = plan);
+          Navigator.pop(context);
+        },
+      ),
+    );
   }
 
   /// Applies the budget slice that matches the currently selected service.
@@ -295,8 +315,10 @@ class _RequestCreationScreenState extends State<RequestCreationScreen> {
                   onCategoryChanged: (c) =>
                       setState(() => _selectedCategory = c),
                   suggestedBudget: _suggestedBudget,
+                  allBudgets: _allBudgets,
                   loadingSuggestedBudget: _loadingSuggestedBudget,
                   onApplySuggestedBudget: _applySuggestedBudget,
+                  onSelectBudget: _allBudgets.length > 1 ? _showBudgetSelector : null,
                 ),
                 _Step3Review(
                   location: _location,
@@ -555,8 +577,10 @@ class _Step2ServiceNeeds extends StatelessWidget {
   final TextEditingController descController;
   final ValueChanged<String> onCategoryChanged;
   final SavedBudgetPlan? suggestedBudget;
+  final List<SavedBudgetPlan> allBudgets;
   final bool loadingSuggestedBudget;
   final VoidCallback onApplySuggestedBudget;
+  final VoidCallback? onSelectBudget;
 
   const _Step2ServiceNeeds({
     required this.selectedCategory,
@@ -565,8 +589,10 @@ class _Step2ServiceNeeds extends StatelessWidget {
     required this.descController,
     required this.onCategoryChanged,
     this.suggestedBudget,
+    this.allBudgets = const [],
     this.loadingSuggestedBudget = false,
     required this.onApplySuggestedBudget,
+    this.onSelectBudget,
   });
 
   @override
@@ -644,45 +670,68 @@ class _Step2ServiceNeeds extends StatelessWidget {
                   catAmount = suggestedBudget!.totalBudget * match.first.allocatedPercent / 100;
                 }
               }
-              return GlassCard(
-                backgroundColor: AppColors.gold.withOpacity(0.07),
-                borderColor: AppColors.gold.withOpacity(0.25),
-                padding: const EdgeInsets.all(14),
-                child: Row(children: [
-                  const Text('💰', style: TextStyle(fontSize: 22)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Saved budget available!', style: AppTextStyles.headingSmall),
-                    const SizedBox(height: 2),
-                    if (catAmount != null)
-                      Text(
-                        '৳ ${catAmount.toInt()} for $selectedCategory',
-                        style: AppTextStyles.bodySmall.copyWith(
-                          color: AppColors.gold,
-                          fontWeight: FontWeight.w700,
+              return GestureDetector(
+                onTap: onSelectBudget,
+                child: GlassCard(
+                  backgroundColor: AppColors.gold.withOpacity(0.07),
+                  borderColor: AppColors.gold.withOpacity(0.25),
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        const Text('💰', style: TextStyle(fontSize: 22)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Row(children: [
+                            Text('Saved budget available!', style: AppTextStyles.headingSmall),
+                            if (onSelectBudget != null) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppColors.gold.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text('${allBudgets.length} plans · tap to change',
+                                    style: AppTextStyles.bodySmall.copyWith(
+                                        fontSize: 9, color: AppColors.gold, fontWeight: FontWeight.w700)),
+                              ),
+                            ],
+                          ]),
+                          const SizedBox(height: 2),
+                          if (catAmount != null)
+                            Text(
+                              '৳ ${catAmount.toInt()} for $selectedCategory',
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.gold,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            )
+                          else
+                            Text(
+                              'No allocation found for $selectedCategory',
+                              style: AppTextStyles.bodySmall.copyWith(color: AppColors.charcoalLight),
+                            ),
+                          Text(
+                            'Plan: "${suggestedBudget!.planName}" · ৳ ${suggestedBudget!.totalBudget.toInt()} total',
+                            style: AppTextStyles.bodySmall,
+                          ),
+                        ])),
+                        ElevatedButton(
+                          onPressed: onApplySuggestedBudget,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.gold,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            textStyle: AppTextStyles.labelMedium.copyWith(fontSize: 11),
+                          ),
+                          child: const Text('Apply'),
                         ),
-                      )
-                    else
-                      Text(
-                        'No allocation found for $selectedCategory',
-                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.charcoalLight),
-                      ),
-                    Text(
-                      'Total plan: ৳ ${suggestedBudget!.totalBudget.toInt()} · ${suggestedBudget!.planName}',
-                      style: AppTextStyles.bodySmall,
-                    ),
-                  ])),
-                  ElevatedButton(
-                    onPressed: onApplySuggestedBudget,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.gold,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      textStyle: AppTextStyles.labelMedium.copyWith(fontSize: 11),
-                    ),
-                    child: const Text('Apply'),
+                      ]),
+                    ],
                   ),
-                ]),
+                ),
               );
             }),
           const SizedBox(height: 12),
@@ -820,6 +869,99 @@ class _Header extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget Selector Bottom Sheet
+// ─────────────────────────────────────────────────────────────────────────────
+class _BudgetSelectorSheet extends StatelessWidget {
+  final List<SavedBudgetPlan> plans;
+  final SavedBudgetPlan? selected;
+  final ValueChanged<SavedBudgetPlan> onSelect;
+  const _BudgetSelectorSheet({
+    required this.plans, required this.selected, required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40, height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.charcoalLight.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Text('Select a Budget Plan', style: AppTextStyles.headingLarge),
+          const SizedBox(height: 6),
+          Text('Choose which saved budget to apply to this event',
+              style: AppTextStyles.bodySmall.copyWith(color: AppColors.charcoalLight)),
+          const SizedBox(height: 20),
+          ...plans.map((plan) {
+            final isSelected = plan.id == selected?.id;
+            return GestureDetector(
+              onTap: () => onSelect(plan),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppColors.gold.withOpacity(0.08)
+                      : AppColors.background,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isSelected ? AppColors.gold : AppColors.divider,
+                    width: isSelected ? 1.5 : 1,
+                  ),
+                ),
+                child: Row(children: [
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.gold.withOpacity(0.15)
+                          : AppColors.charcoal.withOpacity(0.07),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text('💰', style: TextStyle(fontSize: isSelected ? 20 : 18)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(plan.planName, style: AppTextStyles.headingSmall.copyWith(
+                          color: isSelected ? AppColors.gold : AppColors.charcoal)),
+                      const SizedBox(height: 2),
+                      Text('৳ ${plan.totalBudget.toInt()} · ${plan.categories.length} categories',
+                          style: AppTextStyles.bodySmall),
+                    ],
+                  )),
+                  if (isSelected)
+                    const Icon(Icons.check_circle_rounded, color: AppColors.gold, size: 22),
+                ]),
+              ),
+            );
+          }),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }

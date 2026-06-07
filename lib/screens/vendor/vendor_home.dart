@@ -14,6 +14,7 @@ import '../../services/booking_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/mesh_background.dart';
 import 'submit_bid_screen.dart';
+import '../shell/app_shell.dart';
 
 class VendorHome extends StatefulWidget {
   final ValueChanged<int>? onNavigate;
@@ -110,7 +111,13 @@ class _VendorHomeState extends State<VendorHome> {
                       Text('Open Events (${_openPosts.length})',
                           style: AppTextStyles.headingLarge),
                       TextButton(
-                        onPressed: () => widget.onNavigate?.call(1),
+                        onPressed: () {
+                          if (widget.onNavigate != null) {
+                            widget.onNavigate!.call(2); // Bookings tab
+                          } else {
+                            AppShell.of(context)?.goToTab(2);
+                          }
+                        },
                         child: Text('My Bids',
                             style: AppTextStyles.bodySmall.copyWith(
                                 color: AppColors.crimson,

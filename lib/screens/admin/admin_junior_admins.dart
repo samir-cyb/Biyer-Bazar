@@ -33,7 +33,7 @@ class _AdminJuniorAdminsState extends State<AdminJuniorAdmins> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       title: Text('Add Junior Admin', style: AppTextStyles.headingLarge),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        Text('The user must already have a BiyerBajar account.', style: AppTextStyles.bodySmall),
+        Text('The user must already have an Utsob account.', style: AppTextStyles.bodySmall),
         const SizedBox(height: 16),
         TextField(
           controller: ctrl,

@@ -65,14 +65,17 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            onPressed: () {
-              PostService.acceptBid(widget.post.id, bid.id);
-              Navigator.pop(context);
-              Navigator.pop(context); // back to list
-              ScaffoldMessenger.of(context).showSnackBar(
+            onPressed: () async {
+              // Capture messenger & name BEFORE any pops so context stays valid
+              final messenger = ScaffoldMessenger.of(context);
+              final vendorName = bid.vendorBusinessName;
+              await PostService.acceptBid(widget.post.id, bid.id);
+              if (context.mounted) Navigator.pop(context); // close dialog
+              if (context.mounted) Navigator.pop(context); // back to list
+              messenger.showSnackBar(
                 SnackBar(
                   content: Text(
-                      '🎉 ${bid.vendorBusinessName} selected! Deposit request coming soon.'),
+                      '🎉 $vendorName selected! Deposit request coming soon.'),
                   backgroundColor: AppColors.success,
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(
@@ -156,9 +159,9 @@ class _PostDetailScreenState extends State<PostDetailScreen> {
       actions: [
         if (widget.post.status == PostStatus.open)
           TextButton(
-            onPressed: () {
-              PostService.cancelPost(widget.post.id);
-              Navigator.pop(context);
+            onPressed: () async {
+              await PostService.cancelPost(widget.post.id);
+              if (context.mounted) Navigator.pop(context);
             },
             child: Text('Cancel Post',
                 style: AppTextStyles.bodySmall

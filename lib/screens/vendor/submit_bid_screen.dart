@@ -65,6 +65,7 @@ class _SubmitBidScreenState extends State<SubmitBidScreen> {
       includedServices: services,
     );
 
+    if (!mounted) return;
     setState(() => _loading = false);
 
     if (bid == null) {
@@ -452,7 +453,7 @@ class _SubscriptionPaymentScreenState extends State<_SubscriptionPaymentScreen> 
           icon: const Icon(Icons.arrow_back_ios_rounded, color: AppColors.charcoal, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Subscribe to BiyerBajar', style: AppTextStyles.headingLarge),
+        title: Text('Subscribe to Utsob', style: AppTextStyles.headingLarge),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),

@@ -238,6 +238,9 @@ class RichVendorProfile {
   final List<VendorPackage> packages;
   final List<VendorDiscount> discounts;
 
+  // Category-specific structured data (JSONB)
+  final Map<String, dynamic> categoryDetails;
+
   const RichVendorProfile({
     required this.userId,
     required this.businessName,
@@ -246,7 +249,7 @@ class RichVendorProfile {
     this.location,
     this.address,
     this.city,
-    this.rating = 5.0,
+    this.rating = 0.0,
     this.totalBookings = 0,
     this.totalReviews = 0,
     this.isVerified = false,
@@ -262,6 +265,7 @@ class RichVendorProfile {
     this.yearsExperience = 0,
     this.packages = const [],
     this.discounts = const [],
+    this.categoryDetails = const {},
   });
 
   bool get isApproved => approvalStatus == 'approved';
@@ -292,7 +296,7 @@ class RichVendorProfile {
       location:           m['location'] as String?,
       address:            m['address'] as String?,
       city:               m['city'] as String?,
-      rating:             (m['rating'] as num?)?.toDouble() ?? 5.0,
+      rating:             (m['rating'] as num?)?.toDouble() ?? 0.0,
       totalBookings:      (m['total_bookings'] as int?) ?? 0,
       totalReviews:       (m['total_reviews'] as int?) ?? 0,
       isVerified:         (m['is_verified'] as bool?) ?? false,
@@ -310,7 +314,14 @@ class RichVendorProfile {
                             .map((e) => VendorPackage.fromMap(e)).toList(),
       discounts:          discRaw.whereType<Map>()
                             .map((e) => VendorDiscount.fromMap(e)).toList(),
+      categoryDetails:    _parseCategoryDetails(m['category_details']),
     );
+  }
+
+  static Map<String, dynamic> _parseCategoryDetails(dynamic v) {
+    if (v == null) return {};
+    if (v is Map) return Map<String, dynamic>.from(v);
+    return {};
   }
 
   static List<String> _parseStringList(dynamic v) {

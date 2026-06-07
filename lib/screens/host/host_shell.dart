@@ -4,9 +4,7 @@ import '../../core/app_strings.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/floating_nav_bar.dart';
 import 'host_home.dart';
-import 'my_posts_screen.dart';
 import 'vendor_search_screen.dart';
-import '../budget/budget_dashboard.dart';
 import '../chat/chat_list_screen.dart';
 import '../booking/my_bookings_screen.dart';
 import '../shared/profile_screen.dart';
@@ -21,16 +19,19 @@ class HostShell extends StatefulWidget {
 class _HostShellState extends State<HostShell> {
   int _index = 0;
 
+  // Navigate by index — used by HostHome quick-action buttons
+  void navigateTo(int i) => setState(() => _index = i);
+
   @override
   Widget build(BuildContext context) {
     final user = AuthService.currentUser;
+    // 5 tabs: Home | Vendors | Chat | Bookings | Profile
+    // My Posts & Budget moved into Profile tab as quick-access buttons
     final screens = [
-      HostHome(onNavigate: (i) => setState(() => _index = i)),
-      const MyPostsScreen(),
-      const VendorSearchScreen(),        // NEW — vendor search
-      const BudgetDashboard(),
-      const ChatListScreen(),            // NEW — in-app chat
-      const MyBookingsScreen(),          // NEW — bookings
+      HostHome(onNavigate: navigateTo),
+      const VendorSearchScreen(),
+      const ChatListScreen(),
+      const MyBookingsScreen(),
       ProfileScreen(user: user),
     ];
 
@@ -40,13 +41,11 @@ class _HostShellState extends State<HostShell> {
       extendBody: true,
       bottomNavigationBar: FloatingNavBar(
         items: [
-          (Icons.home_rounded,             AppStrings.home),
-          (Icons.article_rounded,          AppStrings.myPosts),
-          (Icons.search_rounded,           AppStrings.findVendors),
-          (Icons.calculate_rounded,        AppStrings.budget),
-          (Icons.chat_bubble_rounded,      AppStrings.messages),
-          (Icons.calendar_month_rounded,   AppStrings.bookings),
-          (Icons.person_rounded,           AppStrings.profile),
+          (Icons.home_rounded,           AppStrings.home),
+          (Icons.search_rounded,         'Vendors'),
+          (Icons.chat_bubble_rounded,    AppStrings.messages),
+          (Icons.calendar_month_rounded, AppStrings.bookings),
+          (Icons.person_rounded,         AppStrings.profile),
         ],
         selected: _index,
         onTap: (i) => setState(() => _index = i),

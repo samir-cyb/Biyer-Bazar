@@ -11,7 +11,9 @@ import '../../services/post_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/mesh_background.dart';
 import '../request/request_creation_screen.dart';
+import '../shell/app_shell.dart';
 import 'post_detail_screen.dart';
+import 'my_posts_screen.dart';
 
 class HostHome extends StatefulWidget {
   final ValueChanged<int>? onNavigate;
@@ -99,7 +101,14 @@ class _HostHomeState extends State<HostHome> {
                       children: [
                         Text('Recent Posts', style: AppTextStyles.headingLarge),
                         TextButton(
-                          onPressed: () => widget.onNavigate?.call(1),
+                          onPressed: () => Navigator.push(
+                            context,
+                            PageRouteBuilder(
+                              pageBuilder: (_, __, ___) => const MyPostsScreen(),
+                              transitionsBuilder: (_, a, __, c) =>
+                                  FadeTransition(opacity: a, child: c),
+                            ),
+                          ),
                           child: Text('See All',
                               style: AppTextStyles.bodySmall.copyWith(
                                   color: AppColors.crimson, fontWeight: FontWeight.w700)),
@@ -341,20 +350,28 @@ class _QuickActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Indices match new 5-tab layout: 0=Home,1=Vendors,2=Chat,3=Bookings,4=Profile
+    // My Posts & Budget are accessed via the Profile tab buttons
     final actions = [
-      ('📋', 'My Posts',  AppColors.crimson,      1),
-      ('🔍', 'Find Vendors', AppColors.gold,       2),
-      ('🧮', 'Budget',    AppColors.charcoalMid,   3),
-      ('👤', 'Profile',   AppColors.freshTalent,   6),
+      ('🔍', 'Find Vendors', AppColors.gold,         1),
+      ('💬', 'Messages',     AppColors.crimson,      2),
+      ('📅', 'Bookings',     AppColors.charcoalMid,  3),
+      ('👤', 'Profile',      AppColors.freshTalent,  4),
     ];
     return Row(
       children: actions.asMap().entries.map((e) {
         final (icon, label, color, idx) = e.value;
         return Expanded(
           child: Container(
-            margin: EdgeInsets.only(right: e.key < 2 ? 10 : 0),
+            margin: EdgeInsets.only(right: e.key < actions.length - 1 ? 10 : 0),
             child: PressableCard(
-              onTap: () => onNavigate?.call(idx),
+              onTap: () {
+                if (onNavigate != null) {
+                  onNavigate!.call(idx);
+                } else {
+                  AppShell.of(context)?.goToTab(idx);
+                }
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
                 decoration: BoxDecoration(

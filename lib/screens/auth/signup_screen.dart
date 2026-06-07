@@ -8,9 +8,8 @@ import '../../models/user_model.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/mesh_background.dart';
-import '../host/host_shell.dart';
-import '../vendor/vendor_shell.dart';
 import '../admin/admin_shell.dart';
+import '../shell/app_shell.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
@@ -74,24 +73,23 @@ class _SignupScreenState extends State<SignupScreen> {
       setState(() => _errorMsg = result.errorMessage);
       return;
     }
-    if (mounted) _navigateByRole(_selectedRole!);
+    if (mounted) _afterSignup(_selectedRole!);
   }
 
-  void _navigateByRole(UserRole role) {
-    Widget shell;
-    switch (role) {
-      case UserRole.host:   shell = const HostShell(); break;
-      case UserRole.vendor: shell = const VendorShell(); break;
-      case UserRole.admin:  shell = const AdminShell(); break;
+  void _afterSignup(UserRole role) {
+    if (role == UserRole.admin) {
+      Navigator.of(context).pushAndRemoveUntil(
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const AdminShell(),
+          transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+          transitionDuration: const Duration(milliseconds: 400),
+        ),
+        (_) => false,
+      );
+    } else {
+      AppShell.of(context)?.refresh();
+      Navigator.of(context).pop();
     }
-    Navigator.of(context).pushAndRemoveUntil(
-      PageRouteBuilder(
-        pageBuilder: (_, __, ___) => shell,
-        transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-        transitionDuration: const Duration(milliseconds: 400),
-      ),
-      (_) => false,
-    );
   }
 
   @override
@@ -125,7 +123,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-              Text('Join BiyerBajar', style: AppTextStyles.displaySmall),
+              Text('Join Utsob', style: AppTextStyles.displaySmall),
               Text('Set up your account to get started.', style: AppTextStyles.bodyMedium),
               const SizedBox(height: 24),
 

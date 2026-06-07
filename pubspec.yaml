@@ -34,6 +34,7 @@ dependencies:
   # Misc
   flutter_rating_bar: ^4.0.1
   percent_indicator: ^4.2.3
+  url_launcher: ^6.3.0
 
   #icons_launcher:
   flutter_launcher_icons: ^0.14.4

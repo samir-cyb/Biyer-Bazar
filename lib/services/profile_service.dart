@@ -1,5 +1,5 @@
 import 'dart:developer' as dev;
-import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
 import 'supabase_service.dart';
@@ -7,22 +7,22 @@ import 'auth_service.dart';
 
 class ProfileService {
   /// Upload a profile picture and return the public URL.
-  static Future<String?> uploadAvatar(File imageFile, String userId) async {
+  /// Uses XFile (web + mobile compatible) — no dart:io needed.
+  static Future<String?> uploadAvatar(XFile imageFile, String userId) async {
     dev.log('[Profile] Uploading avatar for $userId', name: 'BiyerBajar');
     try {
-      final ext = imageFile.path.split('.').last.toLowerCase();
-      final path = '$userId/avatar.$ext';
+      final path = '$userId/avatar.jpg';
+      final bytes = await imageFile.readAsBytes();
 
-      await SupabaseService.avatarStorage.upload(
+      await SupabaseService.avatarStorage.uploadBinary(
         path,
-        imageFile,
-        fileOptions: const FileOptions(upsert: true),
+        bytes,
+        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
       );
 
       final url = SupabaseService.avatarStorage.getPublicUrl(path);
       dev.log('[Profile] Avatar uploaded: $url', name: 'BiyerBajar');
 
-      // Update profile row
       await SupabaseService.profiles
           .update({'profile_picture_url': url}).eq('id', userId);
 
@@ -33,23 +33,59 @@ class ProfileService {
     }
   }
 
-  /// Upload a portfolio image and return the public URL.
-  static Future<String?> uploadPortfolioImage(File imageFile, String vendorId, int index) async {
-    dev.log('[Profile] Uploading portfolio image $index for $vendorId', name: 'BiyerBajar');
+  /// Upload a portfolio image with compression and return the public URL.
+  /// Uses XFile (web + mobile compatible) and uploadBinary — no dart:io needed.
+  static Future<String?> uploadPortfolioImage(XFile imageFile, String vendorId) async {
+    dev.log('[Profile] Uploading portfolio image for $vendorId', name: 'BiyerBajar');
     try {
-      final ext = imageFile.path.split('.').last.toLowerCase();
-      final path = '$vendorId/portfolio_$index.$ext';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final path = '$vendorId/portfolio_$timestamp.jpg';
+      final bytes = await imageFile.readAsBytes();
 
-      await SupabaseService.portfolioStorage.upload(
+      await SupabaseService.portfolioStorage.uploadBinary(
         path,
-        imageFile,
-        fileOptions: const FileOptions(upsert: true),
+        bytes,
+        fileOptions: const FileOptions(upsert: true, contentType: 'image/jpeg'),
       );
 
       return SupabaseService.portfolioStorage.getPublicUrl(path);
     } catch (e) {
       SupabaseService.debugLog('uploadPortfolioImage error', error: e);
       return null;
+    }
+  }
+
+  /// Persist the full portfolio URL list to the DB.
+  static Future<bool> savePortfolioUrls(String vendorId, List<String> urls) async {
+    try {
+      await SupabaseService.vendorProfiles
+          .update({'portfolio_urls': urls})
+          .eq('user_id', vendorId);
+      await AuthService.loadCurrentUser();
+      return true;
+    } catch (e) {
+      SupabaseService.debugLog('savePortfolioUrls error', error: e);
+      return false;
+    }
+  }
+
+  /// Delete a portfolio image from storage and remove its URL from the DB.
+  static Future<bool> deletePortfolioImage(String vendorId, String url, List<String> currentUrls) async {
+    try {
+      // Extract the storage path from the public URL
+      final uri = Uri.parse(url);
+      final segments = uri.pathSegments;
+      // Path is everything after '/object/public/<bucket>/'
+      final bucketIndex = segments.indexOf('portfolio');
+      if (bucketIndex != -1 && bucketIndex + 1 < segments.length) {
+        final storagePath = segments.sublist(bucketIndex + 1).join('/');
+        await SupabaseService.portfolioStorage.remove([storagePath]);
+      }
+      final updated = currentUrls.where((u) => u != url).toList();
+      return savePortfolioUrls(vendorId, updated);
+    } catch (e) {
+      SupabaseService.debugLog('deletePortfolioImage error', error: e);
+      return false;
     }
   }
 

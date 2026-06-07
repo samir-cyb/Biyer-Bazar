@@ -330,7 +330,16 @@ class _BookingCard extends StatelessWidget {
   Future<void> _respond(BuildContext context, bool accept) async {
     final ok = await BookingService.vendorRespond(
         bookingId: booking.id, accept: accept);
-    if (ok) onAction();
+    if (!context.mounted) return;
+    if (ok) {
+      onAction();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Failed to update booking. Please try again.'),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
+      ));
+    }
   }
 
   Future<void> _showPaymentDialog(BuildContext context) async {

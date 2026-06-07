@@ -100,7 +100,7 @@ class _LogoSection extends StatelessWidget {
         ),
         const SizedBox(height: 26),
         Text(
-          'বিয়ের বাজার',
+          'উৎসব',
           style: AppTextStyles.banglaHeading.copyWith(
             color: AppColors.gold,
             fontSize: 32,
@@ -109,7 +109,7 @@ class _LogoSection extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Text(
-          'BiyerBajar',
+          'Utsob',
           style: AppTextStyles.displaySmall.copyWith(
             color: Colors.white.withOpacity(0.80),
             letterSpacing: 5,

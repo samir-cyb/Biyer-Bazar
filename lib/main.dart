@@ -7,9 +7,7 @@ import 'models/user_model.dart';
 import 'services/supabase_service.dart';
 import 'services/auth_service.dart';
 import 'services/platform_settings_service.dart';
-import 'screens/auth/welcome_screen.dart';
-import 'screens/host/host_shell.dart';
-import 'screens/vendor/vendor_shell.dart';
+import 'screens/shell/app_shell.dart';
 import 'screens/admin/admin_shell.dart';
 
 void main() async {
@@ -29,27 +27,26 @@ void main() async {
   dev.log('[main] Supabase initialized', name: 'BiyerBajar');
 
   await PlatformSettingsService.load();
-  dev.log('[main] Platform settings loaded',name: 'BiyerBajar');
+  dev.log('[main] Platform settings loaded', name: 'BiyerBajar');
 
   final user = await AuthService.loadCurrentUser();
   dev.log('[main] Session user: ${user?.name ?? "none"}', name: 'BiyerBajar');
 
-  runApp(BiyerBajarApp(initialUser: user));
+  runApp(UtsobApp(initialUser: user));
 }
 
-class BiyerBajarApp extends StatefulWidget {
+class UtsobApp extends StatefulWidget {
   final AppUser? initialUser;
-  const BiyerBajarApp({super.key, this.initialUser});
+  const UtsobApp({super.key, this.initialUser});
 
   @override
-  State<BiyerBajarApp> createState() => _BiyerBajarAppState();
+  State<UtsobApp> createState() => _UtsobAppState();
 }
 
-class _BiyerBajarAppState extends State<BiyerBajarApp> {
+class _UtsobAppState extends State<UtsobApp> {
   @override
   void initState() {
     super.initState();
-    // Rebuild app when language changes
     AppStrings.languageNotifier.addListener(_onLangChange);
   }
 
@@ -73,12 +70,17 @@ class _BiyerBajarAppState extends State<BiyerBajarApp> {
 
   Widget _resolveHome() {
     final user = widget.initialUser;
-    if (user == null) return const WelcomeScreen();
-    dev.log('[main] Routing to ${user.role.name} shell', name: 'BiyerBajar');
-    switch (user.role) {
-      case UserRole.host:   return const HostShell();
-      case UserRole.vendor: return const VendorShell();
-      case UserRole.admin:  return const AdminShell();
+
+    // Admins get their own back-office shell
+    if (user?.role == UserRole.admin) {
+      dev.log('[main] Routing to AdminShell', name: 'BiyerBajar');
+      return const AdminShell();
     }
+
+    // Everyone else — guests, hosts, vendors — all get the unified AppShell.
+    // The shell adapts its nav based on whether the user is logged in.
+    dev.log('[main] Routing to AppShell (user: ${user?.name ?? "guest"})',
+        name: 'BiyerBajar');
+    return AppShell(initialUser: user);
   }
 }
